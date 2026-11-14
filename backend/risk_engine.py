@@ -1,15 +1,31 @@
 import os
-from typing import Any, Dict
+import random
+import threading
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
 
-# Base de dados oficial do projeto: fica na raiz (uma pasta acima de backend/).
+# Base de dados oficial do projeto: data/astronaut_health_data_ok.xlsx (na raiz do projeto).
 # Caminho calculado a partir deste arquivo, então funciona rodando o uvicorn de qualquer pasta.
-BASE_PADRAO = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "astronaut_health_data_ok.xlsx",
+# DATASET_PATH no .env permite apontar para outra base (ex.: uma cópia para testes).
+RAIZ_PROJETO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_PADRAO = os.getenv(
+    "DATASET_PATH",
+    os.path.join(RAIZ_PROJETO, "data", "astronaut_health_data_ok.xlsx"),
 )
+
+AMBIENTES = ["Estacao Orbital", "Transito para Marte", "Base Marciana"]
+
+# Indicadores com linha de base individual (coluna medida -> coluna base_*)
+PARES_BASE = {
+    "pa_sistolica": "base_pa_sistolica",
+    "pa_diastolica": "base_pa_diastolica",
+    "fc_repouso": "base_fc_repouso",
+    "glicemia_mg_dl": "base_glicemia",
+    "temperatura_c": "base_temperatura",
+    "sono_horas": "base_sono",
+}
 
 
 def _ler_base(caminho: str) -> pd.DataFrame:
@@ -19,20 +35,74 @@ def _ler_base(caminho: str) -> pd.DataFrame:
     return pd.read_csv(caminho)
 
 
+def _gravar_base(df: pd.DataFrame, caminho: str) -> None:
+    """Grava a base no mesmo formato. Falha com mensagem clara se o arquivo estiver aberto no Excel."""
+    try:
+        if caminho.lower().endswith((".xlsx", ".xls")):
+            df.to_excel(caminho, index=False)
+        else:
+            df.to_csv(caminho, index=False)
+    except PermissionError as e:
+        raise RuntimeError(
+            f"Não foi possível salvar em {os.path.basename(caminho)}. "
+            "Feche o arquivo no Excel e tente de novo."
+        ) from e
+
+
+def _vazio(valor: Any) -> bool:
+    return valor is None or (isinstance(valor, float) and np.isnan(valor)) or pd.isna(valor)
+
+
 class SpaceHealthRiskEngine:
     def __init__(self, csv_path: str = BASE_PADRAO):
         self.csv_path = csv_path
         self.df = _ler_base(self.csv_path)
+        self._lock = threading.Lock()
 
     def reload_csv(self):
         self.df = _ler_base(self.csv_path)
 
     def get_astronauts(self):
-        return (
-            self.df[["id_astronauta", "nome", "sexo"]]
-            .drop_duplicates()
-            .to_dict(orient="records")
-        )
+        resultado = []
+        for (id_ast, nome, sexo), grupo in self.df.groupby(["id_astronauta", "nome", "sexo"], sort=True):
+            ultimo = grupo.sort_values("dia_missao").iloc[-1]
+            resultado.append({
+                "id_astronauta": str(id_ast),
+                "nome": str(nome),
+                "sexo": str(sexo),
+                "primeiro_dia": int(grupo["dia_missao"].min()),
+                "ultimo_dia": int(ultimo["dia_missao"]),
+                "ambiente_atual": str(ultimo["ambiente"]),
+            })
+        return resultado
+
+    @staticmethod
+    def desvios_base(linha: pd.Series) -> Dict[str, Any]:
+        """Valor do dia, linha de base individual (base_*) e desvio absoluto/percentual."""
+        saida: Dict[str, Any] = {}
+        for medida, base in PARES_BASE.items():
+            valor = float(linha[medida])
+            ref = float(linha[base])
+            saida[medida] = {
+                "valor": round(valor, 2),
+                "base": round(ref, 2),
+                "desvio": round(valor - ref, 2),
+                "desvio_pct": round(((valor - ref) / ref) * 100, 1) if ref else None,
+            }
+        # Sem coluna base_*: referência fixa do projeto (meta de treino) ou só o valor
+        saida["treino_resistido_min"] = {
+            "valor": int(linha["treino_resistido_min"]),
+            "base": 60,
+            "desvio": int(linha["treino_resistido_min"]) - 60,
+            "desvio_pct": round(((int(linha["treino_resistido_min"]) - 60) / 60) * 100, 1),
+        }
+        saida["humor"] = {"valor": int(linha["humor"]), "base": None, "desvio": None, "desvio_pct": None}
+        saida["radiacao_acumulada_msv"] = {
+            "valor": round(float(linha["radiacao_acumulada_msv"]), 2),
+            "base": None, "desvio": None, "desvio_pct": None,
+        }
+        saida["sintoma_neuro_ocular"] = str(linha["sintoma_neuro_ocular"])
+        return saida
 
     def analyze_day(self, id_astronauta: str, dia_missao: int) -> Dict[str, Any]:
         df_ast = self.df[self.df["id_astronauta"] == id_astronauta].sort_values("dia_missao")
@@ -209,9 +279,21 @@ class SpaceHealthRiskEngine:
                 "incremento_7_dias_msv": delta_rad_7d,
             }
 
-        codigo_semaforo = int(np.max(severidades))
-        categoria_risco = ";".join(categorias) if categorias else "Nominal"
-        partes_afetadas = ";".join(partes) if partes else "nenhuma"
+        triagem_motor = {
+            "codigo_semaforo": int(np.max(severidades)),
+            "categoria_risco": ";".join(categorias) if categorias else "Nominal",
+            "partes_afetadas": ";".join(partes) if partes else "nenhuma",
+        }
+
+        # Fonte da verdade: as colunas do dataset. Se o dia ainda não tem triagem (registro novo), usa a do motor.
+        if all(not _vazio(atual.get(c)) for c in ("codigo_semaforo", "categoria_risco", "partes_afetadas")):
+            codigo_semaforo = int(atual["codigo_semaforo"])
+            categoria_risco = str(atual["categoria_risco"])
+            partes_afetadas = str(atual["partes_afetadas"])
+        else:
+            codigo_semaforo = triagem_motor["codigo_semaforo"]
+            categoria_risco = triagem_motor["categoria_risco"]
+            partes_afetadas = triagem_motor["partes_afetadas"]
 
         # Payload compacto exato para a IA
         payload_compacto = {
@@ -258,8 +340,149 @@ class SpaceHealthRiskEngine:
             ]
         ].to_dict(orient="records")
 
+        # Série dos últimos 7 dias com todos os indicadores e suas bases (gráfico de tendência)
+        colunas_7d = ["dia_missao", "humor", "treino_resistido_min", "radiacao_acumulada_msv"] + [
+            c for par in PARES_BASE.items() for c in par
+        ]
+        serie_7d = janela_7d[colunas_7d].to_dict(orient="records")
+
         return {
             "payload_compacto": payload_compacto,
             "serie_14_dias": serie_14d,
+            "serie_7_dias": serie_7d,
             "medias_7_dias": media_7d,
+            "telemetria_dia": self.desvios_base(atual),
+            "triagem_motor": triagem_motor,
         }
+
+    # ------------------------------------------------------------------
+    # Registro de um novo dia (manual ou simulado) e persistência na base
+    # ------------------------------------------------------------------
+
+    CENARIOS_ANOMALIA = [
+        "sono_isolamento",
+        "sans_neuro_ocular",
+        "febre_infeccao",
+        "hipertensao",
+        "sedentarismo",
+        "tempestade_solar",
+    ]
+
+    def _simular_medicoes(self, ultimo: pd.Series, dose_diaria: float, anomalia: bool) -> tuple:
+        """Gera medições plausíveis em torno da linha de base. Com anomalia, aplica um cenário de alerta."""
+        r = random.Random()
+        m = {
+            "pa_sistolica": int(round(float(ultimo["base_pa_sistolica"]) + r.uniform(-5, 5))),
+            "pa_diastolica": int(round(float(ultimo["base_pa_diastolica"]) + r.uniform(-4, 4))),
+            "fc_repouso": int(round(float(ultimo["base_fc_repouso"]) + r.uniform(-4, 4))),
+            "glicemia_mg_dl": int(round(float(ultimo["base_glicemia"]) * r.uniform(0.95, 1.05))),
+            "temperatura_c": round(float(ultimo["base_temperatura"]) + r.uniform(-0.2, 0.2), 1),
+            "sono_horas": round(float(ultimo["base_sono"]) + r.uniform(-0.4, 0.4), 1),
+            "humor": r.choice([4, 4, 5]),
+            "treino_resistido_min": r.randint(60, 85),
+            "sintoma_neuro_ocular": "Nenhum",
+            "radiacao_dia_msv": round(dose_diaria * r.uniform(0.9, 1.1), 2),
+        }
+        cenario = None
+        if anomalia:
+            cenario = r.choice(self.CENARIOS_ANOMALIA)
+            if cenario == "sono_isolamento":
+                m["sono_horas"] = round(float(ultimo["base_sono"]) - r.uniform(2.3, 3.0), 1)
+                m["humor"] = 2
+            elif cenario == "sans_neuro_ocular":
+                m["sintoma_neuro_ocular"] = r.choice(["Leve pressao ocular", "Visao turva"])
+                m["pa_sistolica"] = int(float(ultimo["base_pa_sistolica"]) + r.randint(12, 18))
+            elif cenario == "febre_infeccao":
+                m["temperatura_c"] = round(r.uniform(38.2, 38.8), 1)
+                m["fc_repouso"] = int(round(float(ultimo["base_fc_repouso"]) * r.uniform(1.28, 1.35)))
+            elif cenario == "hipertensao":
+                m["pa_sistolica"] = int(float(ultimo["base_pa_sistolica"]) + r.randint(22, 30))
+                m["pa_diastolica"] = int(float(ultimo["base_pa_diastolica"]) + r.randint(10, 16))
+            elif cenario == "sedentarismo":
+                m["treino_resistido_min"] = r.randint(5, 15)
+            elif cenario == "tempestade_solar":
+                m["radiacao_dia_msv"] = round(r.uniform(26, 35), 2)
+        return m, cenario
+
+    def registrar_dia(
+        self,
+        id_astronauta: str,
+        medicoes: Optional[Dict[str, Any]] = None,
+        simular_anomalia: bool = False,
+        ambiente: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Cria o registro de (último dia + 1) para o astronauta.
+        - medicoes informado: registro manual.
+        - medicoes = None: simulação automática (normal ou com anomalia).
+        Copia os campos base_* do último dia, calcula a triagem com as regras deste motor,
+        grava codigo_semaforo/categoria_risco/partes_afetadas e persiste no arquivo da base.
+        """
+        with self._lock:
+            df_ast = self.df[self.df["id_astronauta"] == id_astronauta].sort_values("dia_missao")
+            if df_ast.empty:
+                raise ValueError(f"Astronauta {id_astronauta} não encontrado na base.")
+            if ambiente is not None and ambiente not in AMBIENTES:
+                raise ValueError(f"Ambiente inválido: {ambiente}. Use um de {AMBIENTES}.")
+
+            ultimo = df_ast.iloc[-1]
+            novo_dia = int(ultimo["dia_missao"]) + 1
+
+            # Dose diária típica = mediana do incremento de radiação nos últimos 7 dias
+            # (mediana para um pico de tempestade solar não inflar os dias seguintes)
+            incrementos = df_ast["radiacao_acumulada_msv"].tail(8).diff().dropna()
+            dose_diaria = float(incrementos.median()) if not incrementos.empty else 0.7
+
+            cenario = None
+            if medicoes is None:
+                medicoes, cenario = self._simular_medicoes(ultimo, dose_diaria, simular_anomalia)
+                origem = "simulado_anomalia" if simular_anomalia else "simulado_normal"
+            else:
+                medicoes = dict(medicoes)
+                origem = "manual"
+
+            dose = medicoes.pop("radiacao_dia_msv", None)
+            dose = dose_diaria if dose is None else float(dose)
+
+            nova = {c: ultimo[c] for c in ["id_astronauta", "nome", "sexo"] + list(PARES_BASE.values())}
+            nova.update({
+                "dia_missao": novo_dia,
+                "ambiente": ambiente or str(ultimo["ambiente"]),
+                "pa_sistolica": int(medicoes["pa_sistolica"]),
+                "pa_diastolica": int(medicoes["pa_diastolica"]),
+                "fc_repouso": int(medicoes["fc_repouso"]),
+                "glicemia_mg_dl": int(medicoes["glicemia_mg_dl"]),
+                "temperatura_c": float(medicoes["temperatura_c"]),
+                "sono_horas": float(medicoes["sono_horas"]),
+                "humor": int(medicoes["humor"]),
+                "treino_resistido_min": int(medicoes["treino_resistido_min"]),
+                "sintoma_neuro_ocular": str(medicoes.get("sintoma_neuro_ocular") or "Nenhum"),
+                "radiacao_acumulada_msv": round(float(ultimo["radiacao_acumulada_msv"]) + dose, 2),
+                "codigo_semaforo": np.nan,
+                "categoria_risco": np.nan,
+                "partes_afetadas": np.nan,
+            })
+
+            df_novo = pd.concat([self.df, pd.DataFrame([nova])], ignore_index=True)
+            df_anterior = self.df
+            self.df = df_novo
+            try:
+                # Triagem pelas regras do motor (desvios em relação aos campos base_*)
+                triagem = self.analyze_day(id_astronauta, novo_dia)["triagem_motor"]
+                idx = self.df.index[-1]
+                self.df.loc[idx, "codigo_semaforo"] = triagem["codigo_semaforo"]
+                self.df.loc[idx, "categoria_risco"] = triagem["categoria_risco"]
+                self.df.loc[idx, "partes_afetadas"] = triagem["partes_afetadas"]
+                self.df["codigo_semaforo"] = self.df["codigo_semaforo"].astype(int)
+                self.df = self.df[df_anterior.columns]
+                _gravar_base(self.df, self.csv_path)
+            except Exception:
+                self.df = df_anterior  # não deixa o registro pela metade na memória
+                raise
+
+            return {
+                "dia_registrado": novo_dia,
+                "origem": origem,
+                "cenario_simulado": cenario,
+                "analise": self.analyze_day(id_astronauta, novo_dia),
+            }
