@@ -11,6 +11,40 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 # Modelo configurável pelo .env. Padrão: o modelo gratuito usado pela equipe.
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
+# Contador de uso da Groq desde que o servidor foi iniciado.
+# "limites_restantes" vem dos cabeçalhos x-ratelimit-* que a própria Groq devolve em cada resposta.
+USO_GROQ: Dict[str, Any] = {
+    "chamadas": 0,
+    "sucessos": 0,
+    "falhas": 0,
+    "tokens_entrada": 0,
+    "tokens_saida": 0,
+    "tokens_total": 0,
+    "ultima_chamada": None,
+    "limites_restantes": {},
+}
+
+
+def obter_uso_groq() -> Dict[str, Any]:
+    return USO_GROQ
+
+
+# Respostas da IA já obtidas, por (astronauta, dia). Evita gastar requisição ao voltar no mesmo dia.
+# "Reanalisar com IA" (forcar_ia=True) ignora o cache e sempre chama a Groq.
+CACHE_IA: Dict[tuple, Dict[str, Any]] = {}
+
+
+def _ler_limites(headers) -> Dict[str, Any]:
+    """Na Groq: 'requests' = requisições por DIA; 'tokens' = tokens por MINUTO."""
+    return {
+        "requisicoes_dia_restantes": headers.get("x-ratelimit-remaining-requests"),
+        "requisicoes_dia_limite": headers.get("x-ratelimit-limit-requests"),
+        "tokens_minuto_restantes": headers.get("x-ratelimit-remaining-tokens"),
+        "tokens_minuto_limite": headers.get("x-ratelimit-limit-tokens"),
+        "reinicia_requisicoes_em": headers.get("x-ratelimit-reset-requests"),
+        "reinicia_tokens_em": headers.get("x-ratelimit-reset-tokens"),
+    }
+
 SYSTEM_PROMPT = """
 Você é um Copiloto Médico Aeroespacial Autônomo embarcado em missões de longa duração, fundamentado nas diretrizes do NASA Human Research Program (HRP) e da Agência Espacial Canadense (CSA).
 
@@ -97,13 +131,25 @@ def analisar_com_ia(payload_compacto: Dict[str, Any], forcar_ia: bool = False) -
         resultado["fonte_analise"] = "Fallback Local (Chave API não configurada)"
         return resultado
 
+    chave_cache = (
+        payload_compacto["contexto_missao"]["id_astronauta"],
+        payload_compacto["contexto_missao"]["dia_missao"],
+    )
+    if not forcar_ia and chave_cache in CACHE_IA:
+        resultado = dict(CACHE_IA[chave_cache])
+        resultado["fonte_analise"] += " — resposta guardada, sem nova requisição"
+        return resultado
+
+    USO_GROQ["chamadas"] += 1
+    numero = USO_GROQ["chamadas"]
     try:
         client = Groq(api_key=api_key)
         extras: Dict[str, Any] = {}
         if GROQ_MODEL.startswith("openai/gpt-oss"):
             # Modelos gpt-oss "pensam" antes de responder; esforço baixo poupa o limite de 8K tokens/min do plano gratuito
             extras["reasoning_effort"] = "low"
-        chat = client.chat.completions.create(
+        # with_raw_response dá acesso aos cabeçalhos com os limites restantes
+        bruto = client.chat.completions.with_raw_response.create(
             model=GROQ_MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -115,11 +161,34 @@ def analisar_com_ia(payload_compacto: Dict[str, Any], forcar_ia: bool = False) -
             timeout=30.0,
             **extras,
         )
+        chat = bruto.parse()
+        USO_GROQ["limites_restantes"] = _ler_limites(bruto.headers)
+        if chat.usage:
+            USO_GROQ["tokens_entrada"] += chat.usage.prompt_tokens
+            USO_GROQ["tokens_saida"] += chat.usage.completion_tokens
+            USO_GROQ["tokens_total"] += chat.usage.total_tokens
         resposta_json = json.loads(chat.choices[0].message.content)
+        USO_GROQ["sucessos"] += 1
+        USO_GROQ["ultima_chamada"] = {
+            "numero": numero,
+            "ok": True,
+            "tokens": chat.usage.total_tokens if chat.usage else None,
+        }
+        lim = USO_GROQ["limites_restantes"]
+        print(
+            f"[Groq] chamada #{numero} OK | tokens desta chamada: {USO_GROQ['ultima_chamada']['tokens']} "
+            f"| requisições restantes hoje: {lim['requisicoes_dia_restantes']}/{lim['requisicoes_dia_limite']} "
+            f"| tokens restantes neste minuto: {lim['tokens_minuto_restantes']}/{lim['tokens_minuto_limite']}",
+            flush=True,
+        )
         resposta_json["fonte_analise"] = f"Copiloto IA (Groq {GROQ_MODEL} + Protocolos NASA HRP/CSA)"
+        CACHE_IA[chave_cache] = dict(resposta_json)
         return resposta_json
     except Exception as e:
         # Se houver perda de conexão ou erro na API, o astronauta nunca fica sem resposta
+        USO_GROQ["falhas"] += 1
+        USO_GROQ["ultima_chamada"] = {"numero": numero, "ok": False, "erro": type(e).__name__}
+        print(f"[Groq] chamada #{numero} FALHOU: {type(e).__name__}: {str(e)[:200]}", flush=True)
         resultado = _gerar_fallback_offline(payload_compacto)
         resultado["fonte_analise"] = f"Fallback Offline Ativado ({type(e).__name__})"
         return resultado
