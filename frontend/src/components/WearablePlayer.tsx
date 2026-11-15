@@ -88,7 +88,7 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
       extra={
         <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-500">
           <span className={`h-1.5 w-1.5 rounded-full ${ponto?.sem_sinal ? "bg-slate-500" : "animate-pulse bg-green-500"}`} />
-          {ponto?.sem_sinal ? "sem sinal" : "ao vivo (simulado)"}
+          {ponto?.sem_sinal ? "sem sinal" : ponto?.ao_vivo ? `leitura ao vivo ${ponto.lido_em}` : "ao vivo (simulado)"}
         </span>
       }
     >

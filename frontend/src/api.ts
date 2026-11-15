@@ -34,9 +34,9 @@ export const analisarDia = (id_astronauta: string, dia_missao: number, forcar_ia
     body: JSON.stringify({ id_astronauta, dia_missao, forcar_ia }),
   });
 
-export const telemetriaHoraria = (id_astronauta: string, dia_missao: number, hora: number, picos: number[]) =>
+export const telemetriaHoraria = (id_astronauta: string, dia_missao: number, hora: number, picos: number[], aoVivo = false) =>
   pedir<TelemetriaHoraria>(
-    `/telemetria-horaria/${encodeURIComponent(id_astronauta)}/${dia_missao}?hora=${hora}&picos=${picos.join(",")}`,
+    `/telemetria-horaria/${encodeURIComponent(id_astronauta)}/${dia_missao}?hora=${hora}&picos=${picos.join(",")}${aoVivo ? "&ao_vivo=true" : ""}`,
   );
 
 export const registrarDia = (corpo: {

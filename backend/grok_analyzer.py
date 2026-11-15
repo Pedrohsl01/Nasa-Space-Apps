@@ -1,5 +1,8 @@
+import hashlib
 import json
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as TempoEsgotado
 from typing import Any, Dict
 
 from dotenv import load_dotenv
@@ -29,9 +32,19 @@ def obter_uso_groq() -> Dict[str, Any]:
     return USO_GROQ
 
 
-# Respostas da IA já obtidas, por (astronauta, dia). Evita gastar requisição ao voltar no mesmo dia.
-# "Reanalisar com IA" (forcar_ia=True) ignora o cache e sempre chama a Groq.
-CACHE_IA: Dict[tuple, Dict[str, Any]] = {}
+# Respostas da IA já obtidas, indexadas pelo SHA-256 do estado biométrico + triagem enviados à IA.
+# Mesmo estado -> mesma chave -> nenhuma requisição nova. "Reanalisar com IA" (forcar_ia=True) ignora o cache.
+CACHE_IA: Dict[str, Dict[str, Any]] = {}
+_TRAVA_CACHE = threading.Lock()
+
+# Tempo máximo de espera pela Groq antes de responder com a análise local.
+# A chamada continua em segundo plano e, quando termina, entra no cache (a próxima consulta já vem da IA).
+TIMEOUT_IA_S = 3.5
+_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="groq")
+
+
+def _chave_estado(payload: Dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 def _ler_limites(headers) -> Dict[str, Any]:
@@ -98,7 +111,11 @@ def _gerar_fallback_offline(payload: Dict[str, Any]) -> Dict[str, Any]:
     if "Comportamental" in categorias:
         acoes.append("Iniciar protocolo de regulação circadiana (estudo ARCHeR), reduzir estímulos antes de dormir e realizar check-in com a tripulação.")
     if "Cardiovascular" in categorias:
-        acoes.append("Repousar, hidratar 500 ml de água, repetir aferição de pressão/temperatura em 2 horas e monitorar sinais de infecção.")
+        acoes.append("Repousar, hidratar 500 ml de água e repetir a aferição de pressão e frequência cardíaca em 2 horas.")
+    if "Imunológico" in categorias:
+        acoes.append("Repetir a temperatura em 1 hora, hidratar, reforçar higiene e avaliar foco de infecção; isolamento preventivo se a febre persistir.")
+    if "Metabólico" in categorias:
+        acoes.append("Confirmar com glicemia capilar, revisar o horário da última refeição e seguir o plano alimentar da missão.")
     if "Radiação" in categorias:
         acoes.append("Verificar dosimetria (padrão CANS) e deslocar-se para o módulo com maior blindagem da espaçonave.")
 
@@ -116,32 +133,39 @@ def _gerar_fallback_offline(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def analisar_com_ia(payload_compacto: Dict[str, Any], forcar_ia: bool = False) -> Dict[str, Any]:
-    semaforo = payload_compacto["triagem_python"]["codigo_semaforo"]
+FONTES = {
+    "grok_live": "Copiloto IA (Groq {modelo} + Protocolos NASA HRP/CSA)",
+    "grok_cache": "Copiloto IA (Groq {modelo}) — resposta em cache, sem nova requisição",
+    "motor_local": "Motor Autônomo Local (Offline-First){motivo}",
+}
 
-    # Economiza chamadas de API quando o dia é nominal (Verde), a menos que solicitado sob demanda
-    if semaforo == 1 and not forcar_ia:
-        resultado = _gerar_fallback_offline(payload_compacto)
-        resultado["fonte_analise"] = "Motor Autônomo Local (Offline-First)"
-        return resultado
 
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key or api_key in ("sua_chave_aqui", "minha_chave_aqui"):
-        resultado = _gerar_fallback_offline(payload_compacto)
-        resultado["fonte_analise"] = "Fallback Local (Chave API não configurada)"
-        return resultado
+def _finalizar(resultado: Dict[str, Any], fonte: str, payload: Dict[str, Any], motivo: str = "") -> Dict[str, Any]:
+    """Acrescenta os campos padronizados: analise_ia, tags_acao, fonte_analise e fonte_descricao."""
+    avaliacao = payload.get("avaliacao", {})
+    saida = dict(resultado)
+    saida["analise_ia"] = " ".join(
+        t for t in (saida.get("resumo_alerta", ""), saida.get("explicacao_fisiologica", "")) if t
+    ).strip()
+    saida["tags_acao"] = list(avaliacao.get("tags_acao", []))
+    saida["status"] = avaliacao.get("status")
+    saida["score_risco"] = avaliacao.get("score_risco")
+    saida["fonte_analise"] = fonte
+    saida["fonte_descricao"] = FONTES[fonte].format(modelo=GROQ_MODEL, motivo=f" — {motivo}" if motivo else "")
+    return saida
 
-    chave_cache = (
-        payload_compacto["contexto_missao"]["id_astronauta"],
-        payload_compacto["contexto_missao"]["dia_missao"],
-    )
-    if not forcar_ia and chave_cache in CACHE_IA:
-        resultado = dict(CACHE_IA[chave_cache])
-        resultado["fonte_analise"] += " — resposta guardada, sem nova requisição"
-        return resultado
 
-    USO_GROQ["chamadas"] += 1
-    numero = USO_GROQ["chamadas"]
+def _analise_local(payload: Dict[str, Any], motivo: str = "") -> Dict[str, Any]:
+    resultado = _gerar_fallback_offline(payload)
+    resumo = payload.get("avaliacao", {}).get("resumo_tecnico")
+    if resumo:
+        # A análise local usa o resumo técnico do motor (valores reais do dia)
+        resultado["explicacao_fisiologica"] = resumo
+    return _finalizar(resultado, "motor_local", payload, motivo)
+
+
+def _chamar_groq(payload_compacto: Dict[str, Any], api_key: str, numero: int, chave: str) -> Dict[str, Any]:
+    """Executa a chamada (em thread). Ao terminar, grava no cache, mesmo que o pedido original já tenha desistido."""
     try:
         client = Groq(api_key=api_key)
         extras: Dict[str, Any] = {}
@@ -169,11 +193,7 @@ def analisar_com_ia(payload_compacto: Dict[str, Any], forcar_ia: bool = False) -
             USO_GROQ["tokens_total"] += chat.usage.total_tokens
         resposta_json = json.loads(chat.choices[0].message.content)
         USO_GROQ["sucessos"] += 1
-        USO_GROQ["ultima_chamada"] = {
-            "numero": numero,
-            "ok": True,
-            "tokens": chat.usage.total_tokens if chat.usage else None,
-        }
+        USO_GROQ["ultima_chamada"] = {"numero": numero, "ok": True, "tokens": chat.usage.total_tokens if chat.usage else None}
         lim = USO_GROQ["limites_restantes"]
         print(
             f"[Groq] chamada #{numero} OK | tokens desta chamada: {USO_GROQ['ultima_chamada']['tokens']} "
@@ -181,14 +201,47 @@ def analisar_com_ia(payload_compacto: Dict[str, Any], forcar_ia: bool = False) -
             f"| tokens restantes neste minuto: {lim['tokens_minuto_restantes']}/{lim['tokens_minuto_limite']}",
             flush=True,
         )
-        resposta_json["fonte_analise"] = f"Copiloto IA (Groq {GROQ_MODEL} + Protocolos NASA HRP/CSA)"
-        CACHE_IA[chave_cache] = dict(resposta_json)
+        with _TRAVA_CACHE:
+            CACHE_IA[chave] = resposta_json
         return resposta_json
     except Exception as e:
-        # Se houver perda de conexão ou erro na API, o astronauta nunca fica sem resposta
         USO_GROQ["falhas"] += 1
         USO_GROQ["ultima_chamada"] = {"numero": numero, "ok": False, "erro": type(e).__name__}
         print(f"[Groq] chamada #{numero} FALHOU: {type(e).__name__}: {str(e)[:200]}", flush=True)
-        resultado = _gerar_fallback_offline(payload_compacto)
-        resultado["fonte_analise"] = f"Fallback Offline Ativado ({type(e).__name__})"
-        return resultado
+        raise
+
+
+def analisar_com_ia(payload_compacto: Dict[str, Any], forcar_ia: bool = False) -> Dict[str, Any]:
+    """
+    Sempre responde em até ~3,5 s:
+      - grok_cache : mesmo estado já analisado pela IA
+      - grok_live  : a Groq respondeu dentro do tempo
+      - motor_local: dia nominal, sem chave, erro de rede ou tempo esgotado (análise a partir do resumo técnico)
+    """
+    semaforo = payload_compacto["triagem_python"]["codigo_semaforo"]
+
+    # Economiza chamadas de API quando o dia é nominal (Verde), a menos que solicitado sob demanda
+    if semaforo == 1 and not forcar_ia:
+        return _analise_local(payload_compacto)
+
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key or api_key in ("sua_chave_aqui", "minha_chave_aqui"):
+        return _analise_local(payload_compacto, "chave da API não configurada")
+
+    chave = _chave_estado(payload_compacto)
+    if not forcar_ia:
+        with _TRAVA_CACHE:
+            guardada = CACHE_IA.get(chave)
+        if guardada:
+            return _finalizar(guardada, "grok_cache", payload_compacto)
+
+    USO_GROQ["chamadas"] += 1
+    futuro = _EXECUTOR.submit(_chamar_groq, payload_compacto, api_key, USO_GROQ["chamadas"], chave)
+    try:
+        resposta = futuro.result(timeout=TIMEOUT_IA_S)
+        return _finalizar(resposta, "grok_live", payload_compacto)
+    except TempoEsgotado:
+        # A chamada segue em segundo plano e preenche o cache quando terminar
+        return _analise_local(payload_compacto, f"IA demorou mais de {TIMEOUT_IA_S:g} s; a resposta dela ficará em cache")
+    except Exception as e:
+        return _analise_local(payload_compacto, f"falha na IA ({type(e).__name__})")
