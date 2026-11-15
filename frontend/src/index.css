@@ -1,1 +1,43 @@
 @import "tailwindcss";
+
+/* Trilha fina do seletor de dia: parte percorrida em ciano, ponto brilhante no dia atual */
+.trilha-dia {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(to right, #22d3ee 0 var(--progresso, 100%), #1e293b var(--progresso, 100%) 100%);
+  cursor: pointer;
+}
+.trilha-dia::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: #22d3ee;
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.8);
+}
+.trilha-dia::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: none;
+  border-radius: 999px;
+  background: #22d3ee;
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.8);
+}
+
+/* Barra de rolagem fina e discreta (lista de telemetria) */
+.rolagem-fina {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34, 211, 238, 0.45) transparent;
+}
+.rolagem-fina::-webkit-scrollbar {
+  width: 4px;
+}
+.rolagem-fina::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rolagem-fina::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.45);
+  border-radius: 999px;
+}
