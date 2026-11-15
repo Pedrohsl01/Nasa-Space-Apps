@@ -177,7 +177,7 @@ def predicao_tendencia(df_ast: pd.DataFrame, dia: int) -> Dict[str, Any]:
     # Temperatura subindo devagar
     incl_temp = _inclinacao(jan["temperatura_c"])
     if incl_temp is not None and incl_temp >= 0.08 and float(atual["temperatura_c"]) < 38.1:
-        risco("temperatura_subindo", "Temperatura em subida gradual", "Cardiovascular", "Ambiente fechado e hostil",
+        risco("temperatura_subindo", "Temperatura em subida gradual", "Imunológico", "Ambiente fechado e hostil",
               [f"temperatura subindo {incl_temp:.2f} °C/dia"], [
                   "Aferir temperatura 2x/dia",
                   "Reforçar higiene e considerar isolamento preventivo se surgir febre",
@@ -187,7 +187,7 @@ def predicao_tendencia(df_ast: pd.DataFrame, dia: int) -> Dict[str, Any]:
     incl_glic = _inclinacao(jan["glicemia_mg_dl"])
     if incl_glic is not None and abs(incl_glic) >= 1.5:
         direcao = "subindo" if incl_glic > 0 else "caindo"
-        risco("glicemia_deriva", f"Glicemia {direcao} de forma gradual", "Cardiovascular", "Ambiente fechado e hostil",
+        risco("glicemia_deriva", f"Glicemia {direcao} de forma gradual", "Metabólico", "Ambiente fechado e hostil",
               [f"glicemia {direcao} {abs(incl_glic):.1f} mg/dL/dia"], [
                   "Revisar horários das refeições e o plano alimentar",
                   "Medir glicemia capilar em jejum por 3 dias",
@@ -378,4 +378,118 @@ def coach_exercicio(df_ast: pd.DataFrame, dia: int, hora: int, telemetria: Dict[
         "atividade_atual": atividade_atual,
         "status": status,
         "recomendacao": recomendacao,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 4. Avaliação operacional: status, score 0–100, tags de ação e resumo técnico
+# ---------------------------------------------------------------------------
+
+STATUS_POR_CODIGO = {1: "NORMAL", 2: "ATENCAO", 3: "CRITICO"}
+FAIXA_SCORE = {1: (0, 30), 2: (31, 69), 3: (70, 100)}
+
+
+def avaliacao_operacional(
+    codigo: int,
+    categorias: str,
+    indicadores: Dict[str, Any],
+    atual: pd.Series,
+    media_7d: Dict[str, float],
+    telemetria: Dict[str, Any],
+    predicao: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Resumo determinístico para a tripulação e para a IA. Mesmas entradas -> mesma saída.
+    O score respeita a faixa do semáforo (NORMAL 0–30, ATENCAO 31–69, CRITICO 70–100).
+    """
+    ambiente = str(atual["ambiente"])
+    cats = set(c for c in str(categorias).split(";") if c and c != "Nominal")
+    # A planilha antiga marca febre/glicemia como "Cardiovascular": completa pelas chaves dos indicadores
+    if "temperatura_c" in indicadores:
+        cats.add("Imunológico")
+    if "glicemia_mg_dl" in indicadores:
+        cats.add("Metabólico")
+    if "radiacao_acumulada_msv" in indicadores:
+        cats.add("Radiação")
+    if "sintoma_neuro_ocular" in indicadores:
+        cats.add("Neuro-ocular")
+    if "treino_resistido_min" in indicadores:
+        cats.add("Musculoesquelético")
+
+    # Resumo do wearable (horas acordado, ignorando lacunas de sinal)
+    acordado = [p for p in telemetria["pontos"] if p["perfil"] != "sono" and not p["sem_sinal"]]
+    spo2_min = min((p["spo2_pct"] for p in acordado), default=None)
+    hrv_media = round(sum(p["hrv_ms"] for p in acordado) / len(acordado)) if acordado else None
+    hrv_esperada = round(sum(p["esperado"]["hrv_ms"] for p in acordado) / len(acordado)) if acordado else None
+    horas_alerta = sum(1 for p in telemetria["pontos"] if p["semaforo_hora"] > 1)
+    estresse_medio = round(sum(p["estresse_wearable"] for p in acordado) / len(acordado)) if acordado else None
+
+    # ---------------- Score ----------------
+    # base do nível + indicadores em alerta + tendência + wearable (cada parcela com teto, para o score variar)
+    pontos = {1: 5, 2: 40, 3: 72}[codigo]
+    if codigo > 1:
+        pontos += min(14, 4 * len(indicadores))
+    riscos = predicao.get("riscos", [])
+    pontos += min(8, sum(2 if r["severidade"] == "provavel" else 1 for r in riscos))
+    if spo2_min is not None and spo2_min < 94:
+        pontos += 3
+    pontos += min(3, horas_alerta)
+    lo, hi = FAIXA_SCORE[codigo]
+    score = int(max(lo, min(hi, round(pontos))))
+
+    # ---------------- Tags de ação (até 3, por prioridade) ----------------
+    base_sono = float(atual["base_sono"])
+    sono = float(atual["sono_horas"])
+    deficit_sono = sono <= base_sono - 1.0 or "sono_horas" in indicadores
+    fadiga = (hrv_media is not None and hrv_esperada and hrv_media < hrv_esperada * 0.8) or (estresse_medio or 0) >= 65
+
+    tags: List[str] = []
+    if codigo >= 3:
+        tags.append("Suspender EVA" if ambiente == "Base Marciana" else "Restringir Esforço")
+    elif codigo == 2 and cats & {"Cardiovascular", "Imunológico", "Metabólico"}:
+        tags.append("Restringir Esforço")
+    if "Radiação" in cats:
+        tags.append("Buscar Abrigo Blindado")
+    if "Neuro-ocular" in cats:
+        tags.append("Avaliação Ocular")
+    if "Imunológico" in cats:
+        tags.append("Monitorar Febre")
+    if deficit_sono:
+        tags.append("Dessincronia Sol (24h39m)" if ambiente == "Base Marciana" else "Ajustar Ciclo de Sono")
+    if fadiga:
+        tags.append("Fadiga Autonômica")
+    if "Musculoesquelético" in cats:
+        tags.append("Retomar Treino Resistido")
+    if not tags:
+        tags = ["Apto para EVA" if ambiente == "Base Marciana" else "Ciclo Estável"]
+        if codigo == 1 and ambiente != "Base Marciana":
+            tags.append("Manter Rotina")
+    tags = list(dict.fromkeys(tags))[:3]
+
+    # ---------------- Resumo técnico com valores reais ----------------
+    partes = [
+        f"PA {int(atual['pa_sistolica'])}/{int(atual['pa_diastolica'])} mmHg (base {int(atual['base_pa_sistolica'])}/{int(atual['base_pa_diastolica'])})",
+        f"FC {int(atual['fc_repouso'])} bpm (base {int(atual['base_fc_repouso'])})",
+        f"sono {sono:.1f} h (base {base_sono:.1f}; média 7d {media_7d['sono_horas']})",
+        f"temperatura {float(atual['temperatura_c']):.1f} °C",
+        f"glicemia {int(atual['glicemia_mg_dl'])} mg/dL",
+    ]
+    if spo2_min is not None:
+        partes.append(f"SpO₂ mín. {spo2_min}% e HRV média {hrv_media} ms no wearable")
+    rad = float(atual["radiacao_acumulada_msv"])
+    inc = indicadores.get("radiacao_acumulada_msv", {}).get("incremento_7_dias_msv") if isinstance(indicadores.get("radiacao_acumulada_msv"), dict) else None
+    partes.append(f"radiação acumulada {rad:.1f} mSv" + (f" (+{inc} mSv em 7 dias)" if inc is not None else ""))
+    if ambiente == "Base Marciana":
+        partes.append("ciclo de sol marciano de 24h39m")
+    causa = f" Alertas: {', '.join(sorted(cats))}." if cats else " Sem desvios relevantes da linha de base."
+    resumo = (
+        f"{STATUS_POR_CODIGO[codigo]} (score {score}/100) no dia {int(atual['dia_missao'])}, {ambiente}: "
+        + "; ".join(partes) + "." + causa
+    )
+
+    return {
+        "status": STATUS_POR_CODIGO[codigo],
+        "score_risco": score,
+        "tags_acao": tags,
+        "resumo_tecnico": resumo,
     }

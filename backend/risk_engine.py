@@ -1,12 +1,13 @@
 import os
 import random
 import threading
+import time
 from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
 
-from analise_longitudinal import coach_exercicio, exames_sugeridos, predicao_tendencia
+from analise_longitudinal import avaliacao_operacional, coach_exercicio, exames_sugeridos, predicao_tendencia
 from telemetria_horaria import gerar_dia
 
 # Base de dados oficial do projeto: data/astronaut_health_data_ok.xlsx (na raiz do projeto).
@@ -50,6 +51,24 @@ def _gravar_base(df: pd.DataFrame, caminho: str) -> None:
             f"Não foi possível salvar em {os.path.basename(caminho)}. "
             "Feche o arquivo no Excel e tente de novo."
         ) from e
+
+
+def _microvariacao(ponto: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Modo "ao vivo": pequenas oscilações fisiológicas em tempo real sobre a leitura da hora
+    (FC ±2 bpm, HRV ±3 ms, SpO₂ ±0,3%). Só na resposta; o arquivo da base não é alterado.
+    O semáforo da hora continua o calculado para a leitura base (a oscilação é pequena demais para mudá-lo).
+    """
+    novo = dict(ponto)
+    if novo.get("sem_sinal"):
+        return novo
+    rng = random.Random(time.time_ns())
+    novo["fc_bpm"] = int(round(novo["fc_bpm"] + rng.uniform(-2, 2)))
+    novo["hrv_ms"] = max(5, int(round(novo["hrv_ms"] + rng.uniform(-3, 3))))
+    novo["spo2_pct"] = round(min(100.0, novo["spo2_pct"] + rng.uniform(-0.3, 0.3)), 1)
+    novo["ao_vivo"] = True
+    novo["lido_em"] = time.strftime("%H:%M:%S")
+    return novo
 
 
 def _vazio(valor: Any) -> bool:
@@ -163,7 +182,7 @@ class SpaceHealthRiskEngine:
             registrar_alerta(2, "Neuro-ocular", ["cabeca"])
             indicadores_alerta["sintoma_neuro_ocular"] = sintoma_ocular
 
-        # 2. Risco Cardiovascular (Pressão, FC, Temperatura e Metabolismo)
+        # 2. Risco Cardiovascular (Pressão e FC)
         desvio_pas_dia = int(atual["pa_sistolica"]) - int(atual["base_pa_sistolica"])
         desvio_pas_7d = media_7d["pa_sistolica"] - float(atual["base_pa_sistolica"])
         if desvio_pas_dia >= 22 or int(atual["pa_sistolica"]) >= 140:
@@ -199,17 +218,17 @@ class SpaceHealthRiskEngine:
                 "variacao_dia": f"+{round(var_fc_pct, 1)}%",
             }
 
-        # Temperatura & Glicemia (Resposta Imune / Metabólica em Ambiente Fechado)
+        # Temperatura -> "Imunológico" e Glicemia -> "Metabólico" (perigo: ambiente fechado e hostil)
         temp_atual = float(atual["temperatura_c"])
         if temp_atual >= 38.1:
-            registrar_alerta(3, "Cardiovascular", ["peito", "pele"])
+            registrar_alerta(3, "Imunológico", ["peito", "pele"])
             indicadores_alerta["temperatura_c"] = {
                 "valor_dia": temp_atual,
                 "linha_base": float(atual["base_temperatura"]),
                 "media_ultimos_7_dias": media_7d["temperatura_c"],
             }
         elif temp_atual >= 37.5:
-            registrar_alerta(2, "Cardiovascular", ["pele"])
+            registrar_alerta(2, "Imunológico", ["pele"])
             indicadores_alerta["temperatura_c"] = {
                 "valor_dia": temp_atual,
                 "linha_base": float(atual["base_temperatura"]),
@@ -218,7 +237,7 @@ class SpaceHealthRiskEngine:
 
         var_glic_pct = ((float(atual["glicemia_mg_dl"]) - float(atual["base_glicemia"])) / float(atual["base_glicemia"])) * 100
         if abs(var_glic_pct) >= 22:
-            registrar_alerta(2 if abs(var_glic_pct) < 32 else 3, "Cardiovascular", ["peito"])
+            registrar_alerta(2 if abs(var_glic_pct) < 32 else 3, "Metabólico", ["peito"])
             indicadores_alerta["glicemia_mg_dl"] = {
                 "valor_dia": int(atual["glicemia_mg_dl"]),
                 "linha_base": int(atual["base_glicemia"]),
@@ -356,6 +375,13 @@ class SpaceHealthRiskEngine:
         # Para a IA, só os títulos (mantém o payload pequeno para o limite de tokens da Groq)
         payload_compacto["tendencia_7_dias"] = [r["titulo"] for r in predicao["riscos"]]
 
+        # Status, score 0–100, tags de ação e resumo técnico (determinísticos)
+        avaliacao = avaliacao_operacional(
+            codigo_semaforo, categoria_risco, indicadores_alerta if codigo_semaforo > 1 else {},
+            atual, media_7d, telemetria, predicao,
+        )
+        payload_compacto["avaliacao"] = avaliacao
+
         return {
             "payload_compacto": payload_compacto,
             "serie_14_dias": serie_14d,
@@ -364,10 +390,11 @@ class SpaceHealthRiskEngine:
             "telemetria_dia": self.desvios_base(atual),
             "triagem_motor": triagem_motor,
             "predicao_tendencia": predicao,
+            **avaliacao,
             "exames_sugeridos": exames,
         }
 
-    def telemetria_horaria(self, id_astronauta: str, dia_missao: int, hora: int = 23, picos: Optional[list] = None) -> Dict[str, Any]:
+    def telemetria_horaria(self, id_astronauta: str, dia_missao: int, hora: int = 23, picos: Optional[list] = None, ao_vivo: bool = False) -> Dict[str, Any]:
         """24 pontos de wearable do dia (gerados, não gravados), coach na hora pedida e exames atualizados."""
         df_ast = self.df[self.df["id_astronauta"] == id_astronauta].sort_values("dia_missao")
         if df_ast.empty:
@@ -379,6 +406,8 @@ class SpaceHealthRiskEngine:
             raise ValueError("A hora deve estar entre 0 e 23.")
 
         telemetria = gerar_dia(linha.iloc[0].to_dict(), picos)
+        if ao_vivo:
+            telemetria["pontos"][hora] = _microvariacao(telemetria["pontos"][hora])
         return {
             **telemetria,
             "hora": hora,

@@ -170,12 +170,21 @@ export function App() {
   const chaveDia = `${idAstronauta}-${diaMissao}`;
   const picos = useMemo(() => picosPorDia[chaveDia] ?? [], [picosPorDia, chaveDia]);
 
+  // Telemetria ao vivo: a cada 3 s busca a leitura da hora com microvariações (?ao_vivo=true)
+  const [aoVivo, setAoVivo] = useState(false);
+  const [pulsoAoVivo, setPulsoAoVivo] = useState(0);
+  useEffect(() => {
+    if (!aoVivo) return;
+    const t = setInterval(() => setPulsoAoVivo((n) => n + 1), 3000);
+    return () => clearInterval(t);
+  }, [aoVivo]);
+
   useEffect(() => {
     if (diaMissao === null) return;
     let cancelado = false;
     setCarregandoHoraria(true);
     const t = setTimeout(() => {
-      telemetriaHoraria(idAstronauta, diaMissao, horaVirtual, picos)
+      telemetriaHoraria(idAstronauta, diaMissao, horaVirtual, picos, aoVivo)
         .then((r) => !cancelado && setHoraria(r))
         .catch(() => !cancelado && setHoraria(null))
         .finally(() => !cancelado && setCarregandoHoraria(false));
@@ -184,7 +193,7 @@ export function App() {
       cancelado = true;
       clearTimeout(t);
     };
-  }, [idAstronauta, diaMissao, horaVirtual, picos]);
+  }, [idAstronauta, diaMissao, horaVirtual, picos, aoVivo, pulsoAoVivo]);
 
   // Play: avança 1 hora a cada 1,5 s e para às 23:00
   useEffect(() => {
@@ -257,7 +266,7 @@ export function App() {
   const ia = dados?.orientacao_ia;
   const tel = dados?.telemetria_dia;
   const alertas = payload?.indicadores_em_alerta ?? {};
-  const iaOnline = ia ? ia.fonte_analise.startsWith("Copiloto IA") : false;
+  const iaOnline = ia ? ia.fonte_analise === "grok_live" || ia.fonte_analise === "grok_cache" : false;
 
   // Mapa corporal combina a triagem do dia com o alerta da hora do wearable (ex.: pico simulado)
   const pontoHora = horaria?.dia_missao === diaMissao ? horaria.ponto_atual : null;
@@ -395,6 +404,17 @@ export function App() {
             <BotaoTopo cor="emerald" onClick={() => setModalSpinoff(true)}>
               🌀 Spinoff
             </BotaoTopo>
+            <button
+              onClick={() => setAoVivo((v) => !v)}
+              aria-pressed={aoVivo}
+              title="Busca a leitura do wearable a cada 3 s com pequenas oscilações em tempo real"
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded border px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider transition ${
+                aoVivo ? "border-green-500/70 bg-green-500/10 text-green-300" : "border-slate-700 text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${aoVivo ? "animate-pulse bg-green-400" : "bg-slate-600"}`} />
+              Telemetria ao vivo
+            </button>
           </div>
         </div>
       </header>
@@ -520,14 +540,26 @@ export function App() {
               icone={<Sparkles className="h-4 w-4" />}
               className="flex flex-col lg:col-span-3"
               extra={
-                <button
-                  onClick={() => diaMissao && carregarAnalise(idAstronauta, diaMissao, true)}
-                  disabled={carregando}
-                  className="flex items-center gap-1 rounded border border-cyan-700 px-2 py-1 font-mono text-[10px] uppercase text-cyan-300 hover:bg-cyan-500/10 disabled:opacity-50"
-                >
-                  <RefreshCw className={`h-3 w-3 ${carregando ? "animate-spin" : ""}`} />
-                  {carregando ? "Analisando" : "Reanalisar"}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {ia && (
+                    <span
+                      title={ia.fonte_descricao}
+                      className={`whitespace-nowrap rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
+                        iaOnline ? "border-cyan-600/70 text-cyan-300" : "border-slate-600 text-slate-400"
+                      }`}
+                    >
+                      {iaOnline ? "Grok AI" : "Telemetria local"}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => diaMissao && carregarAnalise(idAstronauta, diaMissao, true)}
+                    disabled={carregando}
+                    className="flex items-center gap-1 rounded border border-cyan-700 px-2 py-1 font-mono text-[10px] uppercase text-cyan-300 hover:bg-cyan-500/10 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${carregando ? "animate-spin" : ""}`} />
+                    {carregando ? "Analisando" : "Reanalisar"}
+                  </button>
+                </div>
               }
             >
               {/* Escalonamento: local vs. Terra */}
@@ -546,6 +578,20 @@ export function App() {
                     <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Por que isso acontece no espaço?</p>
                     <p className="mt-1 text-xs leading-relaxed text-slate-300">{ia.explicacao_fisiologica}</p>
                   </div>
+                  {(ia.tags_acao?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {ia.score_risco !== undefined && ia.score_risco !== null && (
+                        <span className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold ${corNivel.borda} ${corNivel.texto}`}>
+                          {ia.status} • {ia.score_risco}/100
+                        </span>
+                      )}
+                      {ia.tags_acao.map((tag) => (
+                        <span key={tag} className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${corNivel.borda} ${corNivel.fundo} ${corNivel.texto}`}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div>
                     <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Contramedidas</p>
                     <ol className="mt-1.5 space-y-1.5">
@@ -565,7 +611,7 @@ export function App() {
               )}
 
               <div className="mt-3 space-y-0.5 border-t border-slate-800 pt-2 font-mono text-[10px] text-slate-500">
-                <p>Fonte: {ia?.fonte_analise}</p>
+                <p>Fonte: {ia?.fonte_descricao}</p>
                 {dados.uso_groq && (
                   <p>
                     Groq nesta sessão: {dados.uso_groq.chamadas} chamada(s) • {dados.uso_groq.tokens_total} tokens

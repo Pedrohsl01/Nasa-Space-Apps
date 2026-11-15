@@ -40,12 +40,19 @@ export interface PontoSerie {
   [coluna: string]: number;
 }
 
+export type StatusRisco = "NORMAL" | "ATENCAO" | "CRITICO";
+
 export interface OrientacaoIA {
   resumo_alerta: string;
   explicacao_fisiologica: string;
   acao_imediata_astronauta: string[];
   nivel_escalonamento: string;
-  fonte_analise: string;
+  analise_ia: string;
+  tags_acao: string[];
+  status?: StatusRisco;
+  score_risco?: number;
+  fonte_analise: "grok_live" | "grok_cache" | "motor_local";
+  fonte_descricao: string;
 }
 
 export interface UsoGroq {
@@ -115,6 +122,8 @@ export interface PontoHorario {
   semaforo_hora: number;
   partes_afetadas: string;
   alertas: AlertaHora[];
+  ao_vivo?: boolean;
+  lido_em?: string;
 }
 
 export interface CoachExercicio {
@@ -148,6 +157,10 @@ export interface TelemetriaHoraria {
 }
 
 export interface Analise {
+  status: StatusRisco;
+  score_risco: number;
+  tags_acao: string[];
+  resumo_tecnico: string;
   predicao_tendencia: PredicaoTendencia;
   exames_sugeridos: ExameSugerido[];
   payload_compacto: {
