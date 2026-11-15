@@ -1,4 +1,4 @@
-import type { Analise, Astronauta, Medicoes } from "./types";
+import type { Analise, Astronauta, Medicoes, TelemetriaHoraria } from "./types";
 
 // Padrão: backend local na porta 8000. Pode ser trocado com VITE_API_URL (ex.: frontend/.env.local)
 export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
@@ -33,6 +33,11 @@ export const analisarDia = (id_astronauta: string, dia_missao: number, forcar_ia
     method: "POST",
     body: JSON.stringify({ id_astronauta, dia_missao, forcar_ia }),
   });
+
+export const telemetriaHoraria = (id_astronauta: string, dia_missao: number, hora: number, picos: number[]) =>
+  pedir<TelemetriaHoraria>(
+    `/telemetria-horaria/${encodeURIComponent(id_astronauta)}/${dia_missao}?hora=${hora}&picos=${picos.join(",")}`,
+  );
 
 export const registrarDia = (corpo: {
   id_astronauta: string;
