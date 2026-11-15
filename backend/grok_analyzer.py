@@ -72,6 +72,9 @@ Domínio científico obrigatório:
 Regras de resposta:
 1. Não presuma conhecimento médico avançado do astronauta; explique de forma clara, direta e prática.
 2. Baseie-se exclusivamente no JSON compacto recebido.
+2b. Se houver "relatos_desconforto" (sintomas relatados pelo próprio astronauta por região do corpo e intensidade 1–5),
+    cruze-os com os sinais vitais e alertas: diga se o sintoma combina com algum desvio medido e inclua ao menos
+    uma ação específica para cada desconforto de intensidade 4 ou 5.
 3. Responda EXCLUSIVAMENTE em JSON válido, sem markdown ou texto fora das chaves abaixo:
 {
   "resumo_alerta": "Frase curta sintetizando o estado atual.",
@@ -155,8 +158,23 @@ def _finalizar(resultado: Dict[str, Any], fonte: str, payload: Dict[str, Any], m
     return saida
 
 
+def _acoes_desconforto(payload: Dict[str, Any]) -> list:
+    """Ações locais para os desconfortos relatados (sem IA)."""
+    acoes = []
+    for d in payload.get("relatos_desconforto", []):
+        n = int(str(d.get("intensidade", "1")).split("/")[0])
+        base = f"{d['regiao']} ({d['tipo'].lower()}, {d['intensidade']})"
+        if n >= 4:
+            acoes.append(f"{base}: interromper esforço que envolva a região, avisar a tripulação e reavaliar em 1 hora.")
+        else:
+            acoes.append(f"{base}: registrar evolução, alongar/repousar a região e reavaliar no próximo check-in.")
+    return acoes
+
+
 def _analise_local(payload: Dict[str, Any], motivo: str = "") -> Dict[str, Any]:
     resultado = _gerar_fallback_offline(payload)
+    # Desconfortos relatados entram nas ações da análise local
+    resultado["acao_imediata_astronauta"] = list(resultado.get("acao_imediata_astronauta", [])) + _acoes_desconforto(payload)
     resumo = payload.get("avaliacao", {}).get("resumo_tecnico")
     if resumo:
         # A análise local usa o resumo técnico do motor (valores reais do dia)
@@ -221,7 +239,8 @@ def analisar_com_ia(payload_compacto: Dict[str, Any], forcar_ia: bool = False) -
     semaforo = payload_compacto["triagem_python"]["codigo_semaforo"]
 
     # Economiza chamadas de API quando o dia é nominal (Verde), a menos que solicitado sob demanda
-    if semaforo == 1 and not forcar_ia:
+    # ou que o astronauta tenha relatado algum desconforto (aí vale a IA cruzar sintoma x sinais vitais)
+    if semaforo == 1 and not forcar_ia and not payload_compacto.get("relatos_desconforto"):
         return _analise_local(payload_compacto)
 
     api_key = os.getenv("GROQ_API_KEY")

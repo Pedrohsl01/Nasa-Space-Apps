@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,10 +20,21 @@ app.add_middleware(
 engine = SpaceHealthRiskEngine()
 
 
+class Desconforto(BaseModel):
+    """Sintoma relatado pelo astronauta numa região do mapa corporal."""
+    regiao: str = Field(max_length=40)
+    nome: str = Field(max_length=60)
+    vista: Literal["frente", "costas"]
+    tipo: str = Field(max_length=40)
+    intensidade: int = Field(ge=1, le=5)
+    detalhe: str = Field(default="", max_length=200)
+
+
 class AnaliseRequest(BaseModel):
     id_astronauta: str
     dia_missao: int
     forcar_ia: bool = False
+    desconfortos: List[Desconforto] = Field(default_factory=list, max_length=30)
 
 
 class Medicoes(BaseModel):
@@ -94,10 +105,14 @@ def obter_telemetria_horaria(id_astronauta: str, dia_missao: int, hora: int = 23
 def executar_analise_completa(req: AnaliseRequest):
     try:
         analise_local = engine.analyze_day(req.id_astronauta, req.dia_missao)
-        orientacao_ia = analisar_com_ia(
-            analise_local["payload_compacto"],
-            forcar_ia=req.forcar_ia,
-        )
+        payload = analise_local["payload_compacto"]
+        if req.desconfortos:
+            # A IA cruza os sintomas subjetivos relatados com os sinais vitais do dia
+            payload["relatos_desconforto"] = [
+                {"regiao": d.nome, "vista": d.vista, "tipo": d.tipo, "intensidade": f"{d.intensidade}/5", "detalhe": d.detalhe}
+                for d in req.desconfortos
+            ]
+        orientacao_ia = analisar_com_ia(payload, forcar_ia=req.forcar_ia)
         return {
             **analise_local,
             "orientacao_ia": orientacao_ia,

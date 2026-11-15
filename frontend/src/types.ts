@@ -42,6 +42,17 @@ export interface PontoSerie {
 
 export type StatusRisco = "NORMAL" | "ATENCAO" | "CRITICO";
 
+/** Desconforto relatado pelo astronauta numa região do corpo (salvo no navegador e enviado à IA). */
+export interface RelatoDesconforto {
+  regiaoId: string;
+  vista: "frente" | "costas";
+  nome: string;
+  tipo: string;
+  intensidade: number; // 1 (leve) a 5 (intensa)
+  detalhe: string;
+  criadoEm: string;
+}
+
 export interface OrientacaoIA {
   resumo_alerta: string;
   explicacao_fisiologica: string;

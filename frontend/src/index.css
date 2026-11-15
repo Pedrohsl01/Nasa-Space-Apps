@@ -41,3 +41,100 @@
   background: rgba(34, 211, 238, 0.45);
   border-radius: 999px;
 }
+
+/* ============ Grade editável (react-grid-layout) ============ */
+.react-grid-item.react-grid-placeholder {
+  background: rgba(34, 211, 238, 0.18);
+  border: 1px dashed rgba(34, 211, 238, 0.8);
+  border-radius: 6px;
+  opacity: 1;
+}
+/* No modo de edição, uma película cobre o conteúdo: o quadro inteiro vira "alça" de arrastar */
+.grade-editando .react-grid-item {
+  outline: 1px dashed rgba(34, 211, 238, 0.55);
+  outline-offset: 2px;
+  border-radius: 6px;
+  cursor: move;
+}
+.grade-editando .react-grid-item::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  border-radius: 6px;
+  background: rgba(8, 47, 73, 0.18);
+}
+.grade-editando .react-grid-item:hover::after {
+  background: rgba(34, 211, 238, 0.08);
+}
+.grade-editando .react-grid-item.react-draggable-dragging {
+  z-index: 30;
+  box-shadow: 0 0 24px rgba(34, 211, 238, 0.35);
+}
+/* Alças de redimensionar visíveis no fundo escuro, acima da película */
+.react-grid-item > .react-resizable-handle {
+  z-index: 20;
+}
+.react-grid-item > .react-resizable-handle::after {
+  border-color: rgba(103, 232, 249, 0.9) !important;
+}
+.react-grid-item > .react-resizable-handle-n,
+.react-grid-item > .react-resizable-handle-s,
+.react-grid-item > .react-resizable-handle-e,
+.react-grid-item > .react-resizable-handle-w {
+  background: none;
+}
+.react-grid-item > .react-resizable-handle-n::before,
+.react-grid-item > .react-resizable-handle-s::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 28px;
+  height: 3px;
+  margin-left: -14px;
+  border-radius: 2px;
+  background: rgba(103, 232, 249, 0.8);
+}
+.react-grid-item > .react-resizable-handle-n::before { top: 4px; }
+.react-grid-item > .react-resizable-handle-s::before { bottom: 4px; }
+.react-grid-item > .react-resizable-handle-e::before,
+.react-grid-item > .react-resizable-handle-w::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 3px;
+  height: 28px;
+  margin-top: -14px;
+  border-radius: 2px;
+  background: rgba(103, 232, 249, 0.8);
+}
+.react-grid-item > .react-resizable-handle-e::before { right: 4px; }
+.react-grid-item > .react-resizable-handle-w::before { left: 4px; }
+
+/* Rolagem dentro dos quadros da grade: barra fina, invisível até passar o mouse (evita a barra branca padrão) */
+.react-grid-item section {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.react-grid-item section:hover {
+  scrollbar-color: rgba(34, 211, 238, 0.45) transparent;
+}
+.react-grid-item section::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.react-grid-item section::-webkit-scrollbar-track {
+  background: transparent;
+}
+.react-grid-item section::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+.react-grid-item section:hover::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.45);
+}
+
+/* Fora do modo de edição as alças de redimensionar ficam escondidas */
+.react-grid-layout:not(.grade-editando) .react-resizable-handle {
+  display: none;
+}
