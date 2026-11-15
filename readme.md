@@ -1,54 +1,145 @@
-# 🛰️ NERV Systems — Astronaut Health Monitoring System
+# 🚀 NERV Systems — Autonomous Space Health Monitoring
 
-![NASA Space Apps 2026](https://img.shields.io/badge/NASA%20Space%20Apps-2026-0B3D91?style=for-the-badge&logo=nasa)
-![Status](https://img.shields.io/badge/Status-In%20Development-success?style=for-the-badge)
-![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
+![NASA Space Apps Challenge 2026](https://img.shields.io/badge/NASA%20Space%20Apps-2026-0B3D91?style=for-the-badge&logo=nasa)
+![Python](https://img.shields.io/badge/Backend-Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Frontend](https://img.shields.io/badge/Frontend-Vite%20%2B%20React-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+![pnpm](https://img.shields.io/badge/Package%20Manager-pnpm-F69220?style=for-the-badge&logo=pnpm&logoColor=white)
 
-Sistema de monitoramento autônomo e suporte à decisão clínica desenvolvido pela equipe **NERV Systems** para o **2026 NASA Space Apps Challenge** (*Create Health Monitoring Software for Astronauts on Space Missions*).
-
----
-
-## 📋 Sobre o Projeto
-
-Em missões espaciais de longa duração — como o programa Artemis, operações em bases lunares e futuras viagens a Marte —, o atraso nas comunicações com a Terra exige que os astronautas tenham autonomia para avaliar, prevenir e tratar alterações fisiológicas e comportamentais a bordo.
-
-O sistema da **NERV Systems** funciona como um assistente visual e analítico de saúde espacial que coleta indicadores biométricos, cruza dados com os protocolos do **Human Research Program (HRP) da NASA** e orienta a tripulação por meio de alertas intuitivos e planos de ação preventivos.
+Sistema autônomo de monitoramento biomédico e suporte à decisão clínica desenvolvido para o **NASA Space Apps Challenge 2026**. O **NERV Systems** foi projetado para operar com **autonomia embarcada** e **baixa carga cognitiva**, auxiliando tripulações em missões de longa duração e habitats planetários (como bases marcianas), onde atrasos de comunicação inviabilizam o suporte médico terrestre em tempo real.
 
 ---
 
-## 🧬 Fundamentação Científica (NASA HRP & CSA)
+## 🧭 Visão Geral
 
-A arquitetura de monitoramento foi projetada para mitigar os **Cinco Riscos do Voo Espacial Humano** mapeados pela NASA:
+Em missões além da órbita terrestre baixa, astronautas enfrentam estressores fisiológicos e psicológicos severos e cumulativos. O **NERV Systems** integra telemetria biomédica horária, análise longitudinal de biomarcadores, um motor determinístico de triagem de risco e análise assistida por IA para detectar desvios precoces e orientar condutas clínicas diretamente a bordo.
 
-1. **Radiação Espacial:** Acompanhamento de exposição cumulativa e riscos associados, inspirado nas pesquisas da **Agência Espacial Canadense (CSA)** e da NASA.
-2. **Isolamento e Confinamento:** Monitoramento de humor, qualidade do sono e desempenho comportamental da tripulação.
-3. **Distância da Terra:** Diagnóstico assistido offline com instruções simplificadas para autoexame sem dependência imediata de médicos em solo.
-4. **Campos Gravitacionais Alterados:** Avaliação de adaptação cardiovascular, perda de densidade óssea, equilíbrio sensório-motor e Síndrome Neuro-ocular Associada ao Voo Espacial (SANS).
-5. **Ambientes Fechados e Hostis:** Correlação entre condições ambientais da cabine/habitat e respostas imunológicas ou respiratórias.
-
-### Indicadores Monitorados
-* **Sinais Vitais & Metabólicos:** Pressão arterial, frequência cardíaca, temperatura corporal e glicemia (`mg/dL`).
-* **Saúde Comportamental & Rotina:** Horas diárias de sono, fadiga cognitiva e registros de humor.
-* **Exames Complementares & Ambiente:** Suporte à análise de imagens médicas (como ultrassonografia a bordo) e níveis de exposição à radiação.
+### Fundamentação Científica
+Os parâmetros de monitoramento e regras de triagem clínica baseiam-se nos riscos mapeados pelo **NASA Human Research Program (HRP)** e em pesquisas da **Agência Espacial Canadense (CSA)**, contemplando:
+- **Radiação Espacial:** acompanhamento de exposição cumulativa e indicadores correlatos.
+- **Microgravidade e Adaptação Fisiológica:** monitoramento cardiovascular, hemodinâmico e musculoesquelético.
+- **Isolamento, Confinamento e Ritmo Circadiano:** avaliação de qualidade do sono, fadiga e estresse operacional.
 
 ---
 
-## ✨ Funcionalidades Principais
+## ⚙️ Arquitetura e Módulos do Sistema
 
-* **🩺 Painel Visual & Mapeamento Corporal Interativo:** Interface gráfica que permite inspecionar sistemas do corpo humano, visualizar funções fisiológicas e identificar rapidamente áreas sob risco.
-* **🚦 Código de Cores e Triagem Inteligente:** Classificação imediata dos indicadores em níveis de status (*Normal*, *Atenção* e *Crítico*) para leitura rápida em situações de alta carga cognitiva.
-* **📈 Análise Temporal e Gráficos Dinâmicos:** Acompanhamento da evolução histórica dos biomarcadores ao longo da missão para detecção precoce de tendências.
-* **📖 Guias de Autoavaliação e Contramedidas:** Instruções passo a passo sobre como realizar medições a bordo, por que cada exame é necessário e quais ações preventivas adotar.
-* **🚀 Adaptação Multi-Ambiente & Engajamento:** Perfis configuráveis para espaçonaves em trânsito, estações orbitais, rovers ou bases planetárias, com lembretes de rotina e gamificação para adesão aos protocolos de saúde.
+O projeto foi reestruturado em uma arquitetura desacoplada entre **Backend (API e Motores Analíticos)** e **Frontend (Interface Operacional)**.
+
+### 1. Backend (`backend/`)
+- **`main.py`**: Ponto de entrada da API backend, responsável por expor os endpoints de telemetria, avaliação de risco e análises clínicas para o frontend.
+- **`risk_engine.py`**: Motor determinístico de regras clínicas e classificação de risco fisiológico baseado nos limiares operacionais da NASA/CSA.
+- **`telemetria_horaria.py`**: Processamento e leitura de séries temporais biométricas em granularidade horária para detecção de anomalias agudas.
+- **`analise_longitudinal.py`**: Avaliação de tendências históricas e evolução clínica dos tripulantes ao longo dos dias de missão.
+- **`groq_analyzer.py`**: Módulo de inteligência analítica integrado à API do groq (xAI) para sintetizar alertas, correlacionar variáveis biomédicas e gerar recomendações clínicas contextualizadas.
+
+### 2. Frontend (`frontend/`)
+- Aplicação web interativa construída com **React + Vite** e gerenciada via **pnpm**.
+- Interface projetada para leitura rápida sob alta carga operacional, apresentando painéis de telemetria em tempo real, indicadores de risco, histórico longitudinal e ambientação visual de missão (`public/video/base_marciana_loop.mp4`).
+
+### 3. Base de Dados (`data/`)
+- **`astronaut_health_data_ok.xlsx`**: Conjunto de dados biométricos e parâmetros fisiológicos estruturados utilizados para alimentação, simulação e validação dos motores de análise.
 
 ---
 
-## 📂 Estrutura do Repositório
+## 📁 Estrutura do Repositório
 
 ```text
+Nasa-Space-Apps/
 ├── assets/
-│   └── style.css          # Estilização e identidade visual da interface
-├── notebooks/
-│   └── EDA.ipynb          # Análise Exploratória de Dados (EDA) e validação dos indicadores de saúde
-├── src/                   # Código-fonte da aplicação e lógica de monitoramento
-└── README.md              # Documentação do projeto
+│   └── style.css                     # Estilos auxiliares e identidade visual
+├── backend/
+│   ├── analise_longitudinal.py       # Análise de evolução clínica e tendências históricas
+│   ├── groq_analyzer.py              # Integração com groq para interpretação clínica assistida
+│   ├── main.py                       # Servidor e rotas da API backend
+│   ├── requirements.txt              # Dependências Python do backend
+│   ├── risk_engine.py                # Motor determinístico de triagem e classificação de risco
+│   └── telemetria_horaria.py         # Processamento de dados biométricos horários
+├── data/
+│   └── astronaut_health_data_ok.xlsx # Dataset biométrico da tripulação
+└── frontend/
+    ├── public/
+    │   ├── favicon.svg
+    │   └── video/
+    │       └── base_marciana_loop.mp4
+    ├── src/                          # Componentes, páginas e serviços da interface web
+    ├── eslint.config.js
+    ├── index.html
+    ├── package.json
+    ├── pnpm-lock.yaml
+    └── pnpm-workspace.yaml
+
+```
+
+---
+
+## 🚀 Como Executar Localmente
+
+### Pré-requisitos
+
+* **Python 3.10+**
+* **Node.js 18+**
+* **pnpm** (`npm install -g pnpm`)
+
+### 1. Configurar e iniciar o Backend
+
+```bash
+# Acesse a pasta do backend
+cd backend
+
+# Crie e ative um ambiente virtual
+python -m venv .venv
+# Linux/macOS:
+source .venv/bin/activate
+# Windows:
+.venv\Scripts\activate
+
+# Instale as dependências
+pip install -r requirements.txt
+
+# Configure a chave de API do groq (se necessário para o groq_analyzer.py)
+export groq_API_KEY="sua_chave_aqui"   # Linux/macOS
+# set groq_API_KEY="sua_chave_aqui"    # Windows (CMD)
+
+# Inicie o servidor backend
+python main.py
+
+```
+
+### 2. Configurar e iniciar o Frontend
+
+Em um novo terminal, a partir da raiz do projeto:
+
+```bash
+# Acesse a pasta do frontend
+cd frontend
+
+# Instale as dependências via pnpm
+pnpm install
+
+# Inicie o servidor de desenvolvimento
+pnpm dev
+
+```
+
+---
+
+## 🤖 Transparência sobre Uso de Inteligência Artificial
+
+Em conformidade com as diretrizes do **NASA Space Apps Challenge**:
+
+* **Em tempo de execução (Software):** O sistema utiliza o módulo `backend/groq_analyzer.py` para apoiar a síntese e interpretação contextual de alertas biomédicos, operando sempre em conjunto com o motor determinístico `risk_engine.py`.
+* **Durante o desenvolvimento:** Ferramentas de IA generativa foram empregadas como apoio na revisão de código, estruturação de componentes e elaboração da documentação técnica, com validação integral pela equipe.
+
+---
+
+## 👥 Integrantes — Equipe NERV Systems
+
+* **Alexandra Silvestre de Souza da Silva**
+* **Larissa Santana Silva**
+* **Lucas Dutra Alves**
+* **Pedro Henrique Soares Lage**
+* **Rafael Baruc Silva**
+
+```
+
+---
