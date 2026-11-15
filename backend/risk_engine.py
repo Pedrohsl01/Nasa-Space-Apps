@@ -6,6 +6,9 @@ from typing import Any, Dict, Optional
 import numpy as np
 import pandas as pd
 
+from analise_longitudinal import coach_exercicio, exames_sugeridos, predicao_tendencia
+from telemetria_horaria import gerar_dia
+
 # Base de dados oficial do projeto: data/astronaut_health_data_ok.xlsx (na raiz do projeto).
 # Caminho calculado a partir deste arquivo, então funciona rodando o uvicorn de qualquer pasta.
 # DATASET_PATH no .env permite apontar para outra base (ex.: uma cópia para testes).
@@ -346,6 +349,13 @@ class SpaceHealthRiskEngine:
         ]
         serie_7d = janela_7d[colunas_7d].to_dict(orient="records")
 
+        # Visão longitudinal (5–7 dias) e déficit de informação
+        predicao = predicao_tendencia(df_ast, dia_missao)
+        telemetria = gerar_dia(atual.to_dict())
+        exames = exames_sugeridos(df_ast, dia_missao, telemetria)
+        # Para a IA, só os títulos (mantém o payload pequeno para o limite de tokens da Groq)
+        payload_compacto["tendencia_7_dias"] = [r["titulo"] for r in predicao["riscos"]]
+
         return {
             "payload_compacto": payload_compacto,
             "serie_14_dias": serie_14d,
@@ -353,6 +363,28 @@ class SpaceHealthRiskEngine:
             "medias_7_dias": media_7d,
             "telemetria_dia": self.desvios_base(atual),
             "triagem_motor": triagem_motor,
+            "predicao_tendencia": predicao,
+            "exames_sugeridos": exames,
+        }
+
+    def telemetria_horaria(self, id_astronauta: str, dia_missao: int, hora: int = 23, picos: Optional[list] = None) -> Dict[str, Any]:
+        """24 pontos de wearable do dia (gerados, não gravados), coach na hora pedida e exames atualizados."""
+        df_ast = self.df[self.df["id_astronauta"] == id_astronauta].sort_values("dia_missao")
+        if df_ast.empty:
+            raise ValueError(f"Astronauta {id_astronauta} não encontrado na base.")
+        linha = df_ast[df_ast["dia_missao"] == dia_missao]
+        if linha.empty:
+            raise ValueError(f"Dia de missão {dia_missao} não encontrado para {id_astronauta}.")
+        if not 0 <= hora <= 23:
+            raise ValueError("A hora deve estar entre 0 e 23.")
+
+        telemetria = gerar_dia(linha.iloc[0].to_dict(), picos)
+        return {
+            **telemetria,
+            "hora": hora,
+            "ponto_atual": telemetria["pontos"][hora],
+            "coach_exercicio": coach_exercicio(df_ast, dia_missao, hora, telemetria),
+            "exames_sugeridos": exames_sugeridos(df_ast, dia_missao, telemetria),
         }
 
     # ------------------------------------------------------------------
