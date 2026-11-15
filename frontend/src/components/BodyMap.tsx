@@ -89,7 +89,7 @@ export function BodyMap({ partesAfetadas, codigoSemaforo, zonaSelecionada, onSel
   const afetadaSelecionada = zonaSelecionada ? afetadas.includes(zonaSelecionada) : false;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col">
       <div className="relative flex justify-center py-2">
         {/* Grade de fundo estilo radar */}
         <div
