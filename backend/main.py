@@ -4,8 +4,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-# grok_analyzer primeiro: ele carrega o .env (GROQ_API_KEY, DATASET_PATH) antes do motor ler a base
-from grok_analyzer import analisar_com_ia, obter_uso_groq
+# groq_analyzer primeiro: ele carrega o .env (GROQ_API_KEY, DATASET_PATH) antes do motor ler a base
+from groq_analyzer import analisar_com_ia, obter_uso_groq
 from risk_engine import AMBIENTES, SpaceHealthRiskEngine
 
 app = FastAPI(title="AstroHealth Copilot API - NASA Space Apps")
@@ -37,6 +37,44 @@ class AnaliseRequest(BaseModel):
     desconfortos: List[Desconforto] = Field(default_factory=list, max_length=30)
     # Pergunta do Chat de Contramedidas (ex.: "Validar aptidão para EVA"); a IA foca a resposta nela
     pergunta: Optional[str] = Field(default=None, max_length=200)
+
+
+class DesconfortoHora(Desconforto):
+    """Desconforto com a hora (relógio virtual 0–23) em que foi relatado: passa a pesar a partir dela."""
+    hora: int = Field(ge=0, le=23)
+
+
+class Contramedida(BaseModel):
+    """Contramedida marcada como aplicada no painel de protocolo, na hora do relógio virtual."""
+    hora: int = Field(ge=0, le=23)
+    texto: str = Field(default="", max_length=300)
+
+
+class ProntidaoRequest(BaseModel):
+    id_astronauta: str
+    dia_missao: int
+    hora: int = Field(default=23, ge=0, le=23)
+    picos: List[int] = Field(default_factory=list, max_length=24)
+    desconfortos: List[DesconfortoHora] = Field(default_factory=list, max_length=30)
+    contramedidas: List[Contramedida] = Field(default_factory=list, max_length=50)
+
+
+class EventosAoVivo(BaseModel):
+    """Eventos do mapa corporal e do painel de contramedidas do dia, cada um com a hora em que ocorreu."""
+    id_astronauta: str
+    dia_missao: Optional[int] = None
+    desconfortos: List[DesconfortoHora] = Field(default_factory=list, max_length=30)
+    contramedidas: List[Contramedida] = Field(default_factory=list, max_length=50)
+
+
+class ReiniciarDiaRequest(EventosAoVivo):
+    # true: fecha o dia ao vivo e abre o seguinte (00:00); false: recomeça dia_missao (ou o da sessão) às 00:00
+    proximo: bool = False
+
+
+class AvancarHoraRequest(EventosAoVivo):
+    # true: a leitura gerada traz um pico agudo simulado (botão "Simular pico wearable")
+    pico: bool = False
 
 
 class Medicoes(BaseModel):
@@ -103,6 +141,76 @@ def obter_telemetria_horaria(id_astronauta: str, dia_missao: int, hora: int = 23
         raise HTTPException(status_code=404 if "não encontrado" in str(e) else 400, detail=str(e))
 
 
+@app.post("/api/prontidao")
+def calcular_prontidao(req: ProntidaoRequest):
+    """
+    Prontidão cumulativa intradiária e Aptidão para EVA de 00:00 até `hora`:
+    base do dia − desgaste acumulado (com recuperação exponencial) − penalidade aguda da hora,
+    com os desconfortos do mapa corporal e as contramedidas aplicadas entrando na hora em que ocorreram.
+    """
+    try:
+        return engine.prontidao_dia(
+            req.id_astronauta,
+            req.dia_missao,
+            req.hora,
+            req.picos,
+            desconfortos=[d.model_dump() for d in req.desconfortos],
+            contramedidas=[c.model_dump() for c in req.contramedidas],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404 if "não encontrado" in str(e) else 400, detail=str(e))
+
+
+def _eventos(req: EventosAoVivo) -> dict:
+    return {
+        "desconfortos": [d.model_dump() for d in req.desconfortos],
+        "contramedidas": [c.model_dump() for c in req.contramedidas],
+    }
+
+
+def _erro_ao_vivo(e: Exception) -> HTTPException:
+    if isinstance(e, RuntimeError):  # ex.: base aberta no Excel ao gravar o dia seguinte
+        return HTTPException(status_code=409, detail=str(e))
+    return HTTPException(status_code=404 if "não encontrado" in str(e) else 400, detail=str(e))
+
+
+@app.post("/api/dia/reiniciar")
+def reiniciar_dia(req: ReiniciarDiaRequest):
+    """
+    Começa um dia operacional às 00:00 com UMA leitura do wearable (as demais horas ficam por coletar).
+    A prontidão base já considera o sono da noite e a fadiga residual do fechamento do dia anterior.
+    proximo=true fecha o dia atual e abre o seguinte (simula e grava um dia normal se ele ainda não existir).
+    """
+    try:
+        return engine.reiniciar_dia(req.id_astronauta, req.dia_missao, req.proximo, **_eventos(req))
+    except (ValueError, RuntimeError) as e:
+        raise _erro_ao_vivo(e)
+
+
+@app.post("/api/telemetria/avancar-hora")
+def avancar_hora(req: AvancarHoraRequest):
+    """
+    Tick do smartwatch: gera e anexa SÓ a leitura da próxima hora (contínua com a anterior e reagindo
+    a atividade, dor e contramedidas), atualiza a prontidão acumulada e devolve o estado.
+    Depois das 23:00, o próximo tick vira o dia (campo "virada" na resposta).
+    """
+    try:
+        return engine.avancar_hora(req.id_astronauta, req.dia_missao, pico=req.pico, **_eventos(req))
+    except (ValueError, RuntimeError) as e:
+        raise _erro_ao_vivo(e)
+
+
+@app.post("/api/telemetria/estado")
+def estado_ao_vivo(req: EventosAoVivo):
+    """Estado ao vivo do dia (abre às 00:00 se ainda não houver sessão) com os eventos do mapa/chat aplicados, sem gerar leitura."""
+    if req.dia_missao is None:
+        raise HTTPException(status_code=400, detail="Informe dia_missao.")
+    try:
+        return engine.estado_ao_vivo(req.id_astronauta, req.dia_missao, **_eventos(req))
+    except (ValueError, RuntimeError) as e:
+        raise _erro_ao_vivo(e)
+
+
 @app.post("/api/analisar-ia")
 def executar_analise_completa(req: AnaliseRequest):
     try:
@@ -133,7 +241,7 @@ def registrar_dia(req: RegistroRequest):
     - com "medicoes": registro manual;
     - sem "medicoes": simulação automática (simular_anomalia true/false).
     Recalcula os desvios em relação aos campos base_*, grava o novo registro na base
-    e chama a IA (grok_analyzer) apenas quando codigo_semaforo > 1.
+    e chama a IA (groq_analyzer) apenas quando codigo_semaforo > 1.
     """
     try:
         resultado = engine.registrar_dia(

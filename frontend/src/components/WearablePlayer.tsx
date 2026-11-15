@@ -1,16 +1,22 @@
+// Wearable ao vivo: as leituras chegam uma hora por vez (como um smartwatch). A linha do tempo mostra só as
+// horas já coletadas; as demais ficam em aberto até o relógio avançar.
 import { useEffect, useState } from "react";
-import { Pause, Play, Radio, SkipBack, SkipForward, Zap } from "lucide-react";
+import { FastForward, Pause, Play, Radio, RotateCcw, SkipForward, Zap } from "lucide-react";
 import { Painel } from "./Painel";
 import type { PontoHorario, TelemetriaHoraria } from "../types";
 
 interface WearablePlayerProps {
-  dados: TelemetriaHoraria | null;
-  hora: number;
+  dados: TelemetriaHoraria | null; // estado ao vivo do dia (pontos = horas coletadas)
   tocando: boolean;
-  carregando: boolean;
-  onHora: (hora: number) => void;
+  velocidade: 1 | 2 | 5;
+  coletando: boolean;
+  erroSync: boolean;
   onTocar: (tocando: boolean) => void;
-  onPico: () => void;
+  onVelocidade: (v: 1 | 2 | 5) => void;
+  onAvancar: () => void; // +1h: força a próxima leitura
+  onPico: () => void; // próxima leitura com pico agudo simulado
+  onReiniciar: () => void; // recomeça o dia às 00:00
+  onProximoDia: () => void; // fecha o dia e abre o seguinte às 00:00
   className?: string;
 }
 
@@ -51,6 +57,8 @@ const SINAIS: Sinal[] = [
   { chave: "estresse_wearable", rotulo: "Estresse", unidade: "/100", amplitude: 1.5, casas: 0 },
 ];
 
+const VELOCIDADES: (1 | 2 | 5)[] = [1, 2, 5];
+
 function corSemaforo(n: number, semSinal = false) {
   if (semSinal) return "bg-slate-700/60";
   if (n >= 3) return "bg-red-500";
@@ -58,7 +66,22 @@ function corSemaforo(n: number, semSinal = false) {
   return "bg-emerald-600/70";
 }
 
-export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onTocar, onPico, className = "" }: WearablePlayerProps) {
+const hh = (h: number) => `${String(h).padStart(2, "0")}:00`;
+
+export function WearablePlayer({
+  dados,
+  tocando,
+  velocidade,
+  coletando,
+  erroSync,
+  onTocar,
+  onVelocidade,
+  onAvancar,
+  onPico,
+  onReiniciar,
+  onProximoDia,
+  className = "",
+}: WearablePlayerProps) {
   // Micro-oscilação só visual: deixa o "smartwatch" com cara de sinal ao vivo
   const [tique, setTique] = useState(0);
   useEffect(() => {
@@ -66,98 +89,159 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
     return () => clearInterval(t);
   }, []);
 
-  const ponto = dados?.pontos[hora] ?? null;
+  const pontos = dados?.pontos ?? [];
+  const horaAtual = dados?.hora ?? null;
+  // Clicar numa hora já coletada mostra aquela leitura; "Ao vivo" volta para a última
+  const [horaVista, setHoraVista] = useState<number | null>(null);
+  useEffect(() => setHoraVista(null), [dados?.dia_missao, dados?.id_astronauta]);
+  const vendoPassado = horaVista !== null && horaVista !== horaAtual;
+  const ponto = (vendoPassado ? pontos.find((p) => p.hora === horaVista) : dados?.ponto_atual) ?? null;
+
   const alertasPorSinal = new Map<string, number>();
   ponto?.alertas.forEach((a) => alertasPorSinal.set(a.sinal, Math.max(a.nivel, alertasPorSinal.get(a.sinal) ?? 0)));
-  const jaTemPico = !!ponto?.pico_simulado;
 
   const oscilar = (s: Sinal, i: number) => {
     const v = ponto?.[s.chave];
     if (typeof v !== "number") return "—";
+    if (vendoPassado) return v.toFixed(s.casas); // leitura histórica: valor exato
     const ruido = Math.sin(tique * 1.7 + i * 2.3) * s.amplitude;
     return (v + ruido).toFixed(s.casas);
   };
 
   const botao = "rounded border border-cyan-800 p-1.5 text-cyan-300 hover:bg-cyan-500/15 disabled:opacity-30";
+  const textoBotao =
+    "flex items-center gap-1 whitespace-nowrap rounded border px-2 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider disabled:opacity-40";
+  const fimDoDia = horaAtual !== null && horaAtual >= 23;
 
   return (
     <Painel
-      titulo="Wearable — telemetria 24 h"
+      titulo="Wearable — telemetria ao vivo"
       icone={<Radio className="h-4 w-4" />}
       className={className}
       extra={
         <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-500">
-          <span className={`h-1.5 w-1.5 rounded-full ${ponto?.sem_sinal ? "bg-slate-500" : "animate-pulse bg-green-500"}`} />
-          {ponto?.sem_sinal ? "sem sinal" : ponto?.ao_vivo ? `leitura ao vivo ${ponto.lido_em}` : "ao vivo (simulado)"}
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              erroSync ? "bg-red-500" : coletando ? "animate-ping bg-cyan-400" : tocando ? "animate-pulse bg-green-500" : "bg-slate-500"
+            }`}
+          />
+          {erroSync
+            ? "sem sincronia"
+            : dados
+              ? `${dados.horas_coletadas ?? pontos.length}/24 leituras • ${tocando ? "coletando" : "pausado"}`
+              : "aguardando 1ª leitura"}
         </span>
       }
     >
       <div className="flex flex-wrap items-center gap-2">
-        {/* Controles do relógio virtual */}
+        {/* Controles do smartwatch */}
         <div className="flex items-center gap-1.5">
-          <button onClick={() => onHora(Math.max(0, hora - 1))} disabled={hora <= 0} className={botao} aria-label="Hora anterior">
-            <SkipBack className="h-3.5 w-3.5" />
-          </button>
           <button
             onClick={() => onTocar(!tocando)}
-            className="rounded border border-cyan-500/70 bg-cyan-500/15 p-1.5 text-cyan-200 hover:bg-cyan-500/25"
-            aria-label={tocando ? "Pausar" : "Reproduzir"}
+            disabled={!dados}
+            className="rounded border border-cyan-500/70 bg-cyan-500/15 p-1.5 text-cyan-200 hover:bg-cyan-500/25 disabled:opacity-40"
+            aria-label={tocando ? "Pausar coleta" : "Iniciar coleta automática"}
+            title={tocando ? "Pausar coleta automática" : `Coleta automática: 1 hora a cada ${5 / velocidade} s`}
           >
             {tocando ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </button>
-          <button onClick={() => onHora(Math.min(23, hora + 1))} disabled={hora >= 23} className={botao} aria-label="Próxima hora">
+          <div className="flex overflow-hidden rounded border border-cyan-900" role="group" aria-label="Velocidade da coleta">
+            {VELOCIDADES.map((v) => (
+              <button
+                key={v}
+                onClick={() => onVelocidade(v)}
+                aria-pressed={velocidade === v}
+                title={`1 hora a cada ${5 / v} s`}
+                className={`px-1.5 py-1 font-mono text-[10px] ${velocidade === v ? "bg-cyan-500/25 text-cyan-100" : "text-slate-400 hover:bg-cyan-500/10"}`}
+              >
+                {v}x
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={onAvancar}
+            disabled={!dados || coletando}
+            className={botao}
+            aria-label="Forçar leitura da próxima hora"
+            title={fimDoDia ? "Próxima leitura vira o dia (00:00 do dia seguinte)" : "+1h: forçar a próxima leitura"}
+          >
             <SkipForward className="h-3.5 w-3.5" />
           </button>
-          <select
-            value={hora}
-            onChange={(e) => onHora(Number(e.target.value))}
-            className="rounded border border-cyan-900 bg-slate-950 px-2 py-1 font-mono text-lg font-bold text-white focus:border-cyan-500 focus:outline-none"
-            aria-label="Hora do relógio virtual"
-          >
-            {Array.from({ length: 24 }, (_, h) => (
-              <option key={h} value={h}>
-                {String(h).padStart(2, "0")}:00
-              </option>
-            ))}
-          </select>
+          <span className="rounded border border-cyan-900 bg-slate-950 px-2 py-0.5 font-mono text-lg font-bold text-white" aria-label="Hora da última leitura">
+            {horaAtual === null ? "--:--" : hh(horaAtual)}
+          </span>
         </div>
 
-        {/* Atividade atual da rotina */}
+        {/* Atividade da hora */}
         <div className="flex min-w-48 flex-1 items-center gap-2 rounded border border-slate-800 bg-(--subcard) px-3 py-1">
           <span className="text-xl" aria-hidden="true">{ponto ? ICONE_PERFIL[ponto.perfil] ?? "•" : "•"}</span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-white">{ponto?.atividade ?? "—"}</p>
+            <p className="truncate text-sm font-semibold text-white">
+              {vendoPassado && <span className="mr-1 font-mono text-[10px] text-amber-300">{ponto?.rotulo} •</span>}
+              {ponto?.atividade ?? "—"}
+            </p>
             <p className="truncate text-[11px] text-slate-400">{ponto?.descricao}</p>
           </div>
           {ponto && ponto.treino_min > 0 && (
             <span className="ml-auto whitespace-nowrap font-mono text-[10px] text-emerald-300">{ponto.treino_min} min treino</span>
           )}
         </div>
-
-        <button
-          onClick={onPico}
-          disabled={!ponto || jaTemPico || carregando}
-          className="flex items-center gap-1.5 whitespace-nowrap rounded border border-amber-400/70 px-2.5 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-amber-200 hover:bg-amber-500/15 disabled:opacity-40"
-        >
-          <Zap className="h-3.5 w-3.5" /> Simular pico wearable
-        </button>
       </div>
 
-      {/* Linha do tempo de 24 h: cor = semáforo da hora */}
-      <div className="mt-2 grid gap-0.5" style={{ gridTemplateColumns: "repeat(24, minmax(0, 1fr))" }}>
-        {(dados?.pontos ?? Array.from({ length: 24 }, () => null)).map((p, h) => (
+      {/* Ações de simulação */}
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <button onClick={onAvancar} disabled={!dados || coletando} className={`${textoBotao} border-cyan-700 text-cyan-200 hover:bg-cyan-500/15`}>
+          <FastForward className="h-3 w-3" /> +1h forçar leitura
+        </button>
+        <button
+          onClick={onPico}
+          disabled={!dados || coletando || fimDoDia}
+          title="A próxima leitura chega com um pico agudo simulado"
+          className={`${textoBotao} border-amber-400/70 text-amber-200 hover:bg-amber-500/15`}
+        >
+          <Zap className="h-3 w-3" /> Próxima leitura com pico
+        </button>
+        <span className="ml-auto flex gap-1.5">
           <button
-            key={h}
-            onClick={() => onHora(h)}
-            title={p ? `${p.rotulo} • ${p.atividade}${p.sem_sinal ? " • sem sinal" : ""}${p.pico_simulado ? " • pico simulado" : ""}` : ""}
-            className={`relative h-4 rounded-sm ${p ? corSemaforo(p.semaforo_hora, p.sem_sinal) : "bg-slate-800"} ${
-              h === hora ? "ring-2 ring-cyan-300 ring-offset-1 ring-offset-[#070d18]" : "opacity-80 hover:opacity-100"
-            }`}
-            aria-label={`Ir para ${String(h).padStart(2, "0")}:00`}
+            onClick={onReiniciar}
+            disabled={!dados || coletando}
+            title="Zera as leituras do dia e recomeça às 00:00"
+            className={`${textoBotao} border-slate-600 text-slate-300 hover:bg-slate-500/15`}
           >
-            {p?.pico_simulado && <span className="absolute inset-0 flex items-center justify-center text-[9px]">⚡</span>}
+            <RotateCcw className="h-3 w-3" /> Reiniciar dia
           </button>
-        ))}
+          <button
+            onClick={onProximoDia}
+            disabled={!dados || coletando}
+            title="Fecha o dia (a fadiga final vira residual) e abre o seguinte às 00:00"
+            className={`${textoBotao} border-slate-600 text-slate-300 hover:bg-slate-500/15`}
+          >
+            Próximo dia →
+          </button>
+        </span>
+      </div>
+
+      {/* Linha do tempo: só horas coletadas têm cor; o resto do dia fica em aberto */}
+      <div className="mt-2 grid gap-0.5" style={{ gridTemplateColumns: "repeat(24, minmax(0, 1fr))" }}>
+        {Array.from({ length: 24 }, (_, h) => {
+          const p = pontos.find((x) => x.hora === h);
+          const selecionada = p && (vendoPassado ? h === horaVista : h === horaAtual);
+          return p ? (
+            <button
+              key={h}
+              onClick={() => setHoraVista(h === horaAtual ? null : h)}
+              title={`${p.rotulo} • ${p.atividade}${p.sem_sinal ? " • sem sinal" : ""}${p.pico_simulado ? " • pico simulado" : ""}`}
+              className={`relative h-4 rounded-sm ${corSemaforo(p.semaforo_hora, p.sem_sinal)} ${
+                selecionada ? "ring-2 ring-cyan-300 ring-offset-1 ring-offset-[#070d18]" : "opacity-80 hover:opacity-100"
+              }`}
+              aria-label={`Ver leitura das ${hh(h)}`}
+            >
+              {p.pico_simulado && <span className="absolute inset-0 flex items-center justify-center text-[9px]">⚡</span>}
+            </button>
+          ) : (
+            <span key={h} title={`${hh(h)} • ainda não coletado`} className="h-4 rounded-sm border border-dashed border-slate-700/80" />
+          );
+        })}
       </div>
       <div className="flex justify-between font-mono text-[9px] leading-tight text-slate-600">
         <span>00:00</span>
@@ -166,8 +250,13 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
         <span>18:00</span>
         <span>23:00</span>
       </div>
+      {vendoPassado && (
+        <button onClick={() => setHoraVista(null)} className="mt-1 font-mono text-[10px] text-cyan-300 hover:underline">
+          ← Vendo {hh(horaVista)} • voltar ao vivo ({horaAtual !== null ? hh(horaAtual) : "—"})
+        </button>
+      )}
 
-      {/* Sinais vitais do wearable na hora selecionada */}
+      {/* Sinais vitais da leitura */}
       <div className="mt-1.5 grid grid-cols-3 gap-2 sm:grid-cols-6">
         {SINAIS.map((s, i) => {
           const nivel = alertasPorSinal.get(s.chave as string) ?? 0;
@@ -193,7 +282,12 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
         })}
       </div>
 
-      {/* Alertas da hora (pico ou oscilação) */}
+      {/* Eventos que modularam a leitura (dor, contramedida, fadiga) */}
+      {ponto?.efeitos && ponto.efeitos.length > 0 && (
+        <p className="mt-1.5 font-mono text-[10px] text-cyan-200/80">↳ {ponto.efeitos.join(" • ")}</p>
+      )}
+
+      {/* Alertas da leitura (pico ou oscilação) */}
       {ponto && (ponto.alertas.length > 0 || ponto.sem_sinal) && (
         <div
           className={`mt-1.5 rounded border px-2 py-1 text-xs ${
