@@ -1,0 +1,5 @@
+# Dependências só do gerador do mapa corporal (tools/gerar_mapa_corpo.py).
+# Instalar no venv do backend:  backend/venv/Scripts/python.exe -m pip install -r tools/requirements.txt
+pillow
+numpy
+opencv-python-headless>=5.0

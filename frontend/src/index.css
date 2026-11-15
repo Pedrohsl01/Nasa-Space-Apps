@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+/* ============ Temas por cenário da missão (data-theme no contêiner do app) ============
+   --card: fundo dos cards  --subcard: sub-cards internos  --borda: bordas principais
+   --canto: cantoneiras HUD  --destaque: títulos/destaques  --dados: valores de telemetria
+   Status médicos são fixos em todos os temas: nominal #34D399, atenção #FBBF24, crítico #EF4444 */
+:root,
+[data-theme="transit"] {
+  --card: rgba(14, 18, 26, 0.88);
+  --subcard: rgba(22, 28, 39, 0.8);
+  --borda: rgba(148, 184, 235, 0.14);
+  --canto: rgba(91, 155, 213, 0.45);
+  --destaque: #5b9bd5;
+  --dados: #38bdf8;
+}
+[data-theme="mars"] {
+  --card: rgba(22, 18, 16, 0.88);
+  --subcard: rgba(34, 28, 25, 0.8);
+  --borda: rgba(231, 180, 150, 0.14);
+  --canto: rgba(217, 119, 66, 0.45);
+  --destaque: #d97742;
+  --dados: #38bdf8;
+}
+[data-theme="station"] {
+  --card: rgba(20, 23, 28, 0.86);
+  --subcard: rgba(226, 232, 240, 0.07);
+  --borda: rgba(226, 232, 240, 0.24);
+  --canto: rgba(241, 245, 249, 0.75);
+  --destaque: #f1f5f9;
+  --dados: #22d3ee;
+}
+
+/* Trilha fina do seletor de dia: parte percorrida em ciano, ponto brilhante no dia atual */
+.trilha-dia {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(to right, #22d3ee 0 var(--progresso, 100%), #1e293b var(--progresso, 100%) 100%);
+  cursor: pointer;
+}
+.trilha-dia::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: #22d3ee;
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.8);
+}
+.trilha-dia::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border: none;
+  border-radius: 999px;
+  background: #22d3ee;
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.8);
+}
+
+/* Barra de rolagem fina e discreta (lista de telemetria) */
+.rolagem-fina {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34, 211, 238, 0.45) transparent;
+}
+.rolagem-fina::-webkit-scrollbar {
+  width: 4px;
+}
+.rolagem-fina::-webkit-scrollbar-track {
+  background: transparent;
+}
+.rolagem-fina::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.45);
+  border-radius: 999px;
+}
+
+/* ============ Grade dos painéis ============
+   Tela larga: 4 colunas. O mapa ocupa 2 linhas à esquerda; à direita, protocolo em cima e temperatura + dispositivo embaixo.
+   Tela estreita: uma coluna, na ordem abaixo. */
+.grade-painel {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "w" "m" "p" "t" "d" "pr" "ex" "te" "tl";
+}
+@media (min-width: 1024px) {
+  .grade-painel {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-areas:
+      "w w w w"
+      "m m p p"
+      "m m t d"
+      "pr pr ex ex"
+      "te te tl tl";
+  }
+}
+
+/* Rolagem (só onde ainda existe): barra fina, invisível até passar o mouse */
+.grade-painel section {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.grade-painel section:hover {
+  scrollbar-color: rgba(34, 211, 238, 0.45) transparent;
+}
+.grade-painel section::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.grade-painel section::-webkit-scrollbar-track {
+  background: transparent;
+}
+.grade-painel section::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+.grade-painel section:hover::-webkit-scrollbar-thumb {
+  background: rgba(34, 211, 238, 0.45);
+}
+
+/* HUD: feedback de ganho de prontidão (sobe e some) */
+@keyframes hud-ganho {
+  0% { opacity: 0; transform: translateY(6px); }
+  15% { opacity: 1; transform: translateY(0); }
+  80% { opacity: 1; transform: translateY(-4px); }
+  100% { opacity: 0; transform: translateY(-10px); }
+}
+.hud-ganho { animation: hud-ganho 2.6s ease-out forwards; }
+@media (prefers-reduced-motion: reduce) { .hud-ganho { animation: none; } }
+
+/* Pop-up de relato enviado: entra com leve zoom */
+@keyframes relato-popup {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+.relato-popup { animation: relato-popup 0.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .relato-popup { animation: none; } }

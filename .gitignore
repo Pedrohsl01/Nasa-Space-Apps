@@ -1,0 +1,11 @@
+# Python
+backend/venv/
+__pycache__/
+*.pyc
+
+# Segredos
+.env
+
+# Node
+node_modules/
+frontend/dist/

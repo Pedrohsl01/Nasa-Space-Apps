@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "C:\\Users\\pedro\\OneDrive\\projetos\\monitoramento-saude-nasa\\backend\\venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "main:app", "--port", "8000", "--app-dir", "C:\\Users\\pedro\\OneDrive\\projetos\\monitoramento-saude-nasa\\backend"],
+      "port": 8000
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "C:\\Users\\pedro\\OneDrive\\projetos\\monitoramento-saude-nasa\\frontend", "dev", "--port", "5173", "--strictPort"],
+      "port": 5173
+    }
+  ]
+}
