@@ -296,6 +296,20 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-[#03060c] pb-8 text-slate-200 font-sans">
+      {/* Vídeo de fundo (Base Marciana em loop): mudo, sem controles, atrás de tudo */}
+      <video
+        className="pointer-events-none fixed inset-0 h-full w-full object-cover motion-reduce:hidden"
+        src="/video/base_marciana_loop.mp4"
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+        aria-hidden="true"
+      />
+      {/* Camada escura por cima do vídeo para manter os painéis legíveis */}
+      <div className="pointer-events-none fixed inset-0 bg-gradient-to-b from-[#03060c]/75 via-[#03060c]/65 to-[#03060c]/85" />
+
       {/* Fundo com grade sutil */}
       <div
         className="pointer-events-none fixed inset-0 opacity-[0.07]"

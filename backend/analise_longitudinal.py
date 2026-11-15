@@ -347,7 +347,8 @@ def coach_exercicio(df_ast: pd.DataFrame, dia: int, hora: int, telemetria: Dict[
     if deficit == 0:
         status = "meta_cumprida"
         recomendacao = f"Meta de {META_TREINO_MIN} min cumprida. Foque em hidratação e alongamento antes do sono."
-    elif hora >= inicio_sono or pontos[hora]["perfil"] == "sono":
+    # Sono da madrugada (antes do meio-dia) é o começo do dia, não o fim
+    elif hora >= inicio_sono or (pontos[hora]["perfil"] == "sono" and hora >= 12):
         status = "critico"
         recomendacao = f"Dia encerrado com {deficit} min de déficit. Planeje compensar com {min(deficit, 30)} min extras amanhã."
     elif proximas:
