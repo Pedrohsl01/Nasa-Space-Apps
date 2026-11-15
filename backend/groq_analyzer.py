@@ -139,8 +139,8 @@ def _gerar_fallback_offline(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 FONTES = {
-    "grok_live": "Copiloto IA (Groq {modelo} + Protocolos NASA HRP/CSA)",
-    "grok_cache": "Copiloto IA (Groq {modelo}) — resposta em cache, sem nova requisição",
+    "groq_live": "Copiloto IA (Groq {modelo} + Protocolos NASA HRP/CSA)",
+    "groq_cache": "Copiloto IA (Groq {modelo}) — resposta em cache, sem nova requisição",
     "motor_local": "Motor Autônomo Local (Offline-First){motivo}",
 }
 
@@ -234,8 +234,8 @@ def _chamar_groq(payload_compacto: Dict[str, Any], api_key: str, numero: int, ch
 def analisar_com_ia(payload_compacto: Dict[str, Any], forcar_ia: bool = False) -> Dict[str, Any]:
     """
     Sempre responde em até ~3,5 s:
-      - grok_cache : mesmo estado já analisado pela IA
-      - grok_live  : a Groq respondeu dentro do tempo
+      - groq_cache : mesmo estado já analisado pela IA
+      - groq_live  : a Groq respondeu dentro do tempo
       - motor_local: dia nominal, sem chave, erro de rede ou tempo esgotado (análise a partir do resumo técnico)
     """
     semaforo = payload_compacto["triagem_python"]["codigo_semaforo"]
@@ -259,13 +259,13 @@ def analisar_com_ia(payload_compacto: Dict[str, Any], forcar_ia: bool = False) -
         with _TRAVA_CACHE:
             guardada = CACHE_IA.get(chave)
         if guardada:
-            return _finalizar(guardada, "grok_cache", payload_compacto)
+            return _finalizar(guardada, "groq_cache", payload_compacto)
 
     USO_GROQ["chamadas"] += 1
     futuro = _EXECUTOR.submit(_chamar_groq, payload_compacto, api_key, USO_GROQ["chamadas"], chave)
     try:
         resposta = futuro.result(timeout=TIMEOUT_IA_S)
-        return _finalizar(resposta, "grok_live", payload_compacto)
+        return _finalizar(resposta, "groq_live", payload_compacto)
     except TempoEsgotado:
         # A chamada segue em segundo plano e preenche o cache quando terminar
         return _analise_local(payload_compacto, f"IA demorou mais de {TIMEOUT_IA_S:g} s; a resposta dela ficará em cache")

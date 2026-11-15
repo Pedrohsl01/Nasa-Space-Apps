@@ -51,6 +51,53 @@ export interface RelatoDesconforto {
   intensidade: number; // 1 (leve) a 5 (intensa)
   detalhe: string;
   criadoEm: string;
+  hora?: number; // hora do relógio virtual (0–23) em que foi relatado; passa a pesar na prontidão a partir dela
+}
+
+// ---------------- Prontidão cumulativa (POST /api/prontidao) ----------------
+export interface FatorProntidao {
+  rotulo: string;
+  pontos: number; // negativo = desconta
+}
+
+export interface PontoProntidao {
+  hora: number;
+  rotulo: string;
+  atividade: string | null;
+  estado: "sono" | "repouso" | "estresse" | "contramedida";
+  prontidao: number;
+  desgaste: number;
+  desgaste_esforco: number;
+  desgaste_carga: number;
+  delta_desgaste: number;
+  recuperacao_hora: number;
+  penalidade_aguda: number;
+  lambda_esforco: number;
+  lambda_carga: number;
+  semaforo_hora: number;
+}
+
+export interface ProntidaoCumulativa {
+  hora: number;
+  prontidao_atual: number;
+  aptidao_eva: number;
+  status_eva: "APTO" | "RESTRICAO" | "INAPTO";
+  rotulo_eva: string;
+  faixa: "apto" | "atencao" | "critico";
+  base: { valor: number; fatores: FatorProntidao[] };
+  desgaste_acumulado: number;
+  desgaste_esforco: number;
+  desgaste_carga: number;
+  recuperacao_acumulada: number;
+  penalidade_aguda: number;
+  fatores_agudos: FatorProntidao[];
+  bloqueios: { nivel: "INAPTO" | "RESTRICAO"; motivo: string }[];
+  estado_atual: PontoProntidao["estado"];
+  contramedidas_consideradas: number;
+  desconfortos_considerados: number;
+  fadiga_residual: number;
+  historico_prontidao: PontoProntidao[];
+  nota: string;
 }
 
 export interface OrientacaoIA {
@@ -62,7 +109,7 @@ export interface OrientacaoIA {
   tags_acao: string[];
   status?: StatusRisco;
   score_risco?: number;
-  fonte_analise: "grok_live" | "grok_cache" | "motor_local";
+  fonte_analise: "groq_live" | "groq_cache" | "motor_local";
   fonte_descricao: string;
 }
 
@@ -135,6 +182,7 @@ export interface PontoHorario {
   alertas: AlertaHora[];
   ao_vivo?: boolean;
   lido_em?: string;
+  efeitos?: string[]; // eventos que modularam esta leitura (dor, contramedida, fadiga)
 }
 
 export interface CoachExercicio {
@@ -164,7 +212,14 @@ export interface TelemetriaHoraria {
   ponto_atual: PontoHorario;
   coach_exercicio: CoachExercicio;
   exames_sugeridos: ExameSugerido[];
+  prontidao?: ProntidaoCumulativa;
   nota: string;
+  // Fluxo ao vivo (/api/dia/reiniciar, /api/telemetria/avancar-hora, /api/telemetria/estado):
+  // "pontos" traz SÓ as horas já coletadas (00:00 até "hora")
+  ultima_leitura?: string;
+  horas_coletadas?: number;
+  dia_completo?: boolean;
+  virada?: { de: number; para: number; registrado: boolean } | null;
 }
 
 export interface Analise {
