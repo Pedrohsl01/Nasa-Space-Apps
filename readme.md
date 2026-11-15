@@ -5,141 +5,131 @@
 ![Frontend](https://img.shields.io/badge/Frontend-Vite%20%2B%20React-646CFF?style=for-the-badge&logo=vite&logoColor=white)
 ![pnpm](https://img.shields.io/badge/Package%20Manager-pnpm-F69220?style=for-the-badge&logo=pnpm&logoColor=white)
 
-Sistema autônomo de monitoramento biomédico e suporte à decisão clínica desenvolvido para o **NASA Space Apps Challenge 2026**. O **NERV Systems** foi projetado para operar com **autonomia embarcada** e **baixa carga cognitiva**, auxiliando tripulações em missões de longa duração e habitats planetários (como bases marcianas), onde atrasos de comunicação inviabilizam o suporte médico terrestre em tempo real.
+Autonomous biomedical monitoring and clinical decision support system developed for the **NASA Space Apps Challenge 2026**. **NERV Systems** is designed to operate with **onboard autonomy** and **low cognitive load**, assisting crews on long-duration missions and planetary habitats (such as Martian bases), where communication delays make real-time ground medical support unfeasible.
 
 ---
 
-## 🧭 Visão Geral
+## 🧭 Overview
 
-Em missões além da órbita terrestre baixa, astronautas enfrentam estressores fisiológicos e psicológicos severos e cumulativos. O **NERV Systems** integra telemetria biomédica horária, análise longitudinal de biomarcadores, um motor determinístico de triagem de risco e análise assistida por IA para detectar desvios precoces e orientar condutas clínicas diretamente a bordo.
+On missions beyond Low Earth Orbit, astronauts face severe and cumulative physiological and psychological stressors. **NERV Systems** integrates hourly biomedical telemetry, longitudinal biomarker analysis, a deterministic risk triage engine, and AI-assisted analysis to detect early deviations and guide clinical protocols directly onboard.
 
-### Fundamentação Científica
-Os parâmetros de monitoramento e regras de triagem clínica baseiam-se nos riscos mapeados pelo **NASA Human Research Program (HRP)** e em pesquisas da **Agência Espacial Canadense (CSA)**, contemplando:
-- **Radiação Espacial:** acompanhamento de exposição cumulativa e indicadores correlatos.
-- **Microgravidade e Adaptação Fisiológica:** monitoramento cardiovascular, hemodinâmico e musculoesquelético.
-- **Isolamento, Confinamento e Ritmo Circadiano:** avaliação de qualidade do sono, fadiga e estresse operacional.
+### Scientific Foundation
+The monitoring parameters and clinical triage rules are based on the risks mapped by the **NASA Human Research Program (HRP)** and research from the **Canadian Space Agency (CSA)**, addressing:
+- **Space Radiation:** tracking cumulative exposure and correlated indicators.
+- **Microgravity and Physiological Adaptation:** cardiovascular, hemodynamic, and musculoskeletal monitoring.
+- **Isolation, Confinement, and Circadian Rhythm:** assessment of sleep quality, fatigue, and operational stress.
 
 ---
 
-## ⚙️ Arquitetura e Módulos do Sistema
+## ⚙️ System Architecture and Modules
 
-O projeto foi reestruturado em uma arquitetura desacoplada entre **Backend (API e Motores Analíticos)** e **Frontend (Interface Operacional)**.
+The project is structured into a decoupled architecture separating the **Backend (API and Analytical Engines)** from the **Frontend (Operational Interface)**.
 
 ### 1. Backend (`backend/`)
-- **`main.py`**: Ponto de entrada da API backend, responsável por expor os endpoints de telemetria, avaliação de risco e análises clínicas para o frontend.
-- **`risk_engine.py`**: Motor determinístico de regras clínicas e classificação de risco fisiológico baseado nos limiares operacionais da NASA/CSA.
-- **`telemetria_horaria.py`**: Processamento e leitura de séries temporais biométricas em granularidade horária para detecção de anomalias agudas.
-- **`analise_longitudinal.py`**: Avaliação de tendências históricas e evolução clínica dos tripulantes ao longo dos dias de missão.
-- **`groq_analyzer.py`**: Módulo de inteligência analítica integrado à API do groq (xAI) para sintetizar alertas, correlacionar variáveis biomédicas e gerar recomendações clínicas contextualizadas.
+- **`main.py`**: Entry point for the backend API, responsible for exposing telemetry, risk assessment, and clinical analysis endpoints to the frontend.
+- **`risk_engine.py`**: Deterministic engine for clinical rules and physiological risk classification based on NASA/CSA operational thresholds.
+- **`telemetria_horaria.py`**: Processing and ingestion of biometric time series at hourly granularity for acute anomaly detection.
+- **`analise_longitudinal.py`**: Evaluation of historical trends and clinical progression of crew members across mission days.
+- **`groq_analyzer.py`**: Analytical intelligence module integrated with the Groq API to synthesize alerts, correlate biomedical variables, and generate contextualized clinical recommendations.
 
 ### 2. Frontend (`frontend/`)
-- Aplicação web interativa construída com **React + Vite** e gerenciada via **pnpm**.
-- Interface projetada para leitura rápida sob alta carga operacional, apresentando painéis de telemetria em tempo real, indicadores de risco, histórico longitudinal e ambientação visual de missão (`public/video/base_marciana_loop.mp4`).
+- Interactive web application built with **React + Vite** and managed via **pnpm**.
+- Interface engineered for rapid readability under high operational workload, featuring real-time telemetry dashboards, risk indicators, longitudinal history, and mission ambient visuals (`public/video/base_marciana_loop.mp4`).
 
-### 3. Base de Dados (`data/`)
-- **`astronaut_health_data_ok.xlsx`**: Conjunto de dados biométricos e parâmetros fisiológicos estruturados utilizados para alimentação, simulação e validação dos motores de análise.
+### 3. Dataset (`data/`)
+- **`astronaut_health_data_ok.xlsx`**: Structured dataset of biometric measurements and physiological parameters used to feed, simulate, and validate the analytical engines.
 
 ---
 
-## 📁 Estrutura do Repositório
+## 📁 Repository Structure
 
 ```text
 Nasa-Space-Apps/
 ├── assets/
-│   └── style.css                     # Estilos auxiliares e identidade visual
+│   └── style.css                     # Auxiliary stylesheets and visual identity
 ├── backend/
-│   ├── analise_longitudinal.py       # Análise de evolução clínica e tendências históricas
-│   ├── groq_analyzer.py              # Integração com groq para interpretação clínica assistida
-│   ├── main.py                       # Servidor e rotas da API backend
-│   ├── requirements.txt              # Dependências Python do backend
-│   ├── risk_engine.py                # Motor determinístico de triagem e classificação de risco
-│   └── telemetria_horaria.py         # Processamento de dados biométricos horários
+│   ├── analise_longitudinal.py       # Clinical progression and historical trend analysis
+│   ├── groq_analyzer.py              # Groq integration for assisted clinical interpretation
+│   ├── main.py                       # Backend API server and routes
+│   ├── requirements.txt              # Backend Python dependencies
+│   ├── risk_engine.py                # Deterministic triage and risk classification engine
+│   └── telemetria_horaria.py         # Hourly biometric data processing
 ├── data/
-│   └── astronaut_health_data_ok.xlsx # Dataset biométrico da tripulação
+│   └── astronaut_health_data_ok.xlsx # Crew biometric dataset
 └── frontend/
     ├── public/
     │   ├── favicon.svg
     │   └── video/
     │       └── base_marciana_loop.mp4
-    ├── src/                          # Componentes, páginas e serviços da interface web
+    ├── src/                          # Web interface components, pages, and services
     ├── eslint.config.js
     ├── index.html
     ├── package.json
     ├── pnpm-lock.yaml
     └── pnpm-workspace.yaml
-
 ```
 
 ---
 
-## 🚀 Como Executar Localmente
+## 🚀 Running Locally
 
-### Pré-requisitos
+### Prerequisites
+- **Python 3.10+**
+- **Node.js 18+**
+- **pnpm** (`npm install -g pnpm`)
 
-* **Python 3.10+**
-* **Node.js 18+**
-* **pnpm** (`npm install -g pnpm`)
-
-### 1. Configurar e iniciar o Backend
-
+### 1. Configure and Start the Backend
 ```bash
-# Acesse a pasta do backend
+# Navigate to the backend directory
 cd backend
 
-# Crie e ative um ambiente virtual
+# Create and activate a virtual environment
 python -m venv .venv
 # Linux/macOS:
 source .venv/bin/activate
 # Windows:
 .venv\Scripts\activate
 
-# Instale as dependências
+# Install dependencies
 pip install -r requirements.txt
 
-# Configure a chave de API do groq (se necessário para o groq_analyzer.py)
-export groq_API_KEY="sua_chave_aqui"   # Linux/macOS
-# set groq_API_KEY="sua_chave_aqui"    # Windows (CMD)
+# Set the Groq API key (if required for groq_analyzer.py)
+export GROQ_API_KEY="your_api_key_here"   # Linux/macOS
+# set GROQ_API_KEY="your_api_key_here"    # Windows (CMD)
 
-# Inicie o servidor backend
+# Start the backend server
 python main.py
-
 ```
 
-### 2. Configurar e iniciar o Frontend
-
-Em um novo terminal, a partir da raiz do projeto:
-
+### 2. Configure and Start the Frontend
+In a new terminal, from the project root:
 ```bash
-# Acesse a pasta do frontend
+# Navigate to the frontend directory
 cd frontend
 
-# Instale as dependências via pnpm
+# Install dependencies via pnpm
 pnpm install
 
-# Inicie o servidor de desenvolvimento
+# Start the development server
 pnpm dev
-
 ```
 
 ---
 
-## 🤖 Transparência sobre Uso de Inteligência Artificial
+## 🤖 Artificial Intelligence Transparency
 
-Em conformidade com as diretrizes do **NASA Space Apps Challenge**:
-
-* **Em tempo de execução (Software):** O sistema utiliza o módulo `backend/groq_analyzer.py` para apoiar a síntese e interpretação contextual de alertas biomédicos, operando sempre em conjunto com o motor determinístico `risk_engine.py`.
-* **Durante o desenvolvimento:** Ferramentas de IA generativa foram empregadas como apoio na revisão de código, estruturação de componentes e elaboração da documentação técnica, com validação integral pela equipe.
+In compliance with the **NASA Space Apps Challenge** guidelines:
+- **At Runtime (Software):** The system uses the `backend/groq_analyzer.py` module to support the synthesis and contextual interpretation of biomedical alerts, always operating alongside the deterministic `risk_engine.py` engine.
+- **During Development:** Generative AI tools were used to assist with code review, component structuring, and technical documentation drafting, with full validation by the team.
 
 ---
 
-## 👥 Integrantes — Equipe NERV Systems
+## 👥 Team Members — NERV Systems
 
-* **Alexandra Silvestre de Souza da Silva**
-* **Larissa Santana Silva**
-* **Lucas Dutra Alves**
-* **Pedro Henrique Soares Lage**
-* **Rafael Baruc Silva**
-
-```
+- **Alexandra Silvestre de Souza da Silva**
+- **Larissa Santana Silva**
+- **Lucas Dutra Alves**
+- **Pedro Henrique Soares Lage**
+- **Rafael Baruc Silva**
 
 ---
