@@ -14,6 +14,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { BodyMap, type Zona } from "./components/BodyMap";
+import { motivosPorZona } from "./components/motivosAlerta";
 import { META_TREINO, TendenciaChart } from "./components/TendenciaChart";
 import { RegistroModal } from "./components/RegistroModal";
 import { SpinoffModal } from "./components/SpinoffModal";
@@ -261,13 +262,18 @@ export function App() {
   // Mapa corporal combina a triagem do dia com o alerta da hora do wearable (ex.: pico simulado)
   const pontoHora = horaria?.dia_missao === diaMissao ? horaria.ponto_atual : null;
   const alertaHora = pontoHora && pontoHora.semaforo_hora > 1 ? pontoHora : null;
-  const partesMapa = useMemo(() => {
-    const dia = (triagem?.partes_afetadas ?? "nenhuma").split(";").filter((p) => p && p !== "nenhuma");
-    const hora = alertaHora ? alertaHora.partes_afetadas.split(";").filter((p) => p && p !== "nenhuma") : [];
-    const todas = [...new Set([...dia, ...hora])];
-    return todas.length ? todas.join(";") : "nenhuma";
-  }, [triagem, alertaHora]);
-  const codigoMapa = Math.max(codigo, alertaHora?.semaforo_hora ?? 1);
+  // Motivo de cada parte em alerta (ex.: peito -> "Pressão muito alta"), para os cartões ao lado do corpo
+  const motivosMapa = useMemo(
+    () =>
+      motivosPorZona(
+        alertas,
+        triagem?.partes_afetadas ?? "nenhuma",
+        triagem?.categoria_risco ?? "",
+        codigo,
+        alertaHora,
+      ),
+    [alertas, triagem, codigo, alertaHora],
+  );
 
   // Gamificação: metas diárias simples e transparentes (metas do projeto, não clínicas)
   const missoes = useMemo(() => {
@@ -498,7 +504,7 @@ export function App() {
               className="lg:col-span-6"
               extra={<span className="font-mono text-[10px] text-slate-500">{NOME_AMBIENTE[ambienteDia] ?? ambienteDia}</span>}
             >
-              <BodyMap partesAfetadas={partesMapa} codigoSemaforo={codigoMapa} zonaSelecionada={zona} onSelectZona={setZona} />
+              <BodyMap motivos={motivosMapa} zonaSelecionada={zona} onSelectZona={setZona} />
               <p className="mt-2 text-center font-mono text-[10px] text-slate-500">Categorias do dia: {triagem.categoria_risco}</p>
               {alertaHora && (
                 <p className={`mt-1 text-center font-mono text-[10px] ${alertaHora.semaforo_hora >= 3 ? "text-red-300" : "text-amber-300"}`}>
