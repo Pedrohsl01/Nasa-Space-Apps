@@ -35,6 +35,8 @@ class AnaliseRequest(BaseModel):
     dia_missao: int
     forcar_ia: bool = False
     desconfortos: List[Desconforto] = Field(default_factory=list, max_length=30)
+    # Pergunta do Chat de Contramedidas (ex.: "Validar aptidão para EVA"); a IA foca a resposta nela
+    pergunta: Optional[str] = Field(default=None, max_length=200)
 
 
 class Medicoes(BaseModel):
@@ -112,6 +114,8 @@ def executar_analise_completa(req: AnaliseRequest):
                 {"regiao": d.nome, "vista": d.vista, "tipo": d.tipo, "intensidade": f"{d.intensidade}/5", "detalhe": d.detalhe}
                 for d in req.desconfortos
             ]
+        if req.pergunta and req.pergunta.strip():
+            payload["pergunta_operador"] = req.pergunta.strip()
         orientacao_ia = analisar_com_ia(payload, forcar_ia=req.forcar_ia)
         return {
             **analise_local,

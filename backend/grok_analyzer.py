@@ -75,6 +75,8 @@ Regras de resposta:
 2b. Se houver "relatos_desconforto" (sintomas relatados pelo próprio astronauta por região do corpo e intensidade 1–5),
     cruze-os com os sinais vitais e alertas: diga se o sintoma combina com algum desvio medido e inclua ao menos
     uma ação específica para cada desconforto de intensidade 4 ou 5.
+2c. Se houver "pergunta_operador" (pergunta feita no Chat de Contramedidas), responda a ela de forma direta:
+    o "resumo_alerta" deve responder à pergunta e as ações devem ser específicas para ela.
 3. Responda EXCLUSIVAMENTE em JSON válido, sem markdown ou texto fora das chaves abaixo:
 {
   "resumo_alerta": "Frase curta sintetizando o estado atual.",
@@ -240,7 +242,12 @@ def analisar_com_ia(payload_compacto: Dict[str, Any], forcar_ia: bool = False) -
 
     # Economiza chamadas de API quando o dia é nominal (Verde), a menos que solicitado sob demanda
     # ou que o astronauta tenha relatado algum desconforto (aí vale a IA cruzar sintoma x sinais vitais)
-    if semaforo == 1 and not forcar_ia and not payload_compacto.get("relatos_desconforto"):
+    if (
+        semaforo == 1
+        and not forcar_ia
+        and not payload_compacto.get("relatos_desconforto")
+        and not payload_compacto.get("pergunta_operador")
+    ):
         return _analise_local(payload_compacto)
 
     api_key = os.getenv("GROQ_API_KEY")

@@ -4,9 +4,9 @@ import { ChevronLeft, ChevronRight, Clock, Thermometer, Watch } from "lucide-rea
 // Moldura compacta dos widgets, no mesmo estilo dos painéis principais
 function Widget({ titulo, icone, children }: { titulo: string; icone: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="relative flex flex-1 flex-col rounded-md border border-cyan-900/50 bg-[#070d18]/90 p-3">
-      <span className="pointer-events-none absolute -top-px -left-px h-2.5 w-2.5 border-t-2 border-l-2 border-cyan-500/70" />
-      <span className="pointer-events-none absolute -bottom-px -right-px h-2.5 w-2.5 border-b-2 border-r-2 border-cyan-500/70" />
+    <section className="relative flex flex-1 flex-col rounded-md border border-(--borda) bg-(--card) backdrop-blur-md p-3">
+      <span className="pointer-events-none absolute -top-px -left-px h-2.5 w-2.5 border-t-2 border-l-2 border-(--canto)" />
+      <span className="pointer-events-none absolute -bottom-px -right-px h-2.5 w-2.5 border-b-2 border-r-2 border-(--canto)" />
       <h3 className="mb-2 flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-300">
         {icone}
         {titulo}

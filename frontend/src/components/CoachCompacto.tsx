@@ -12,7 +12,7 @@ export function CoachCompacto({ coach, className = "" }: { coach: CoachExercicio
   const cor = COR_COACH[coach.status];
   return (
     <div
-      className={`flex items-center gap-3 rounded border border-slate-800 bg-slate-900/60 px-2.5 py-1.5 font-mono text-[10px] text-slate-400 ${className}`}
+      className={`flex items-center gap-3 rounded border border-slate-800 bg-(--subcard) px-2.5 py-1.5 font-mono text-[10px] text-slate-400 ${className}`}
       title={`Coach de exercício: ${coach.recomendacao}`}
     >
       <span className="shrink-0 font-semibold uppercase tracking-wider text-cyan-300">🏋 Coach de Exercícios</span>

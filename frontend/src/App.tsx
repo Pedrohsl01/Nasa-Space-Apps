@@ -2,10 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Earth,
   RefreshCw,
   Satellite,
@@ -20,20 +18,35 @@ import { RegistroModal } from "./components/RegistroModal";
 import { SpinoffModal } from "./components/SpinoffModal";
 import { DispositivoWidget, TemperaturaExternaWidget } from "./components/Widgets";
 import { Painel } from "./components/Painel";
-import { GradeLayout, LAYOUT_PADRAO, carregarLayout, limparLayoutSalvo, salvarLayout } from "./components/GradeLayout";
-import type { Layout } from "react-grid-layout";
+import { GradeLayout } from "./components/GradeLayout";
 import { WearablePlayer } from "./components/WearablePlayer";
 import { CoachCompacto } from "./components/CoachCompacto";
 import { ExamesPanel, PredicaoPanel } from "./components/PaineisAnalise";
-import { analisarDia, listarAmbientes, listarAstronautas, registrarDia, telemetriaHoraria } from "./api";
+import { ProntidaoHUD, type SinalResumo } from "./components/ProntidaoHUD";
+import { LocalMissaoWidget } from "./components/LocalMissaoWidget";
+import { LogoApp } from "./components/LogoApp";
+import { RelatoEnviadoPopup } from "./components/RelatoEnviadoPopup";
+import {
+  ESTADO_VAZIO,
+  XP_RELATO,
+  calcularAptidaoEva,
+  carregarHud,
+  salvarHud,
+  type EstadoTripulante,
+} from "./components/prontidao";
+import { analisarDia, listarAstronautas, registrarDia, telemetriaHoraria } from "./api";
 import type { Analise, Astronauta, Desvio, Medicoes, RelatoDesconforto, TelemetriaHoraria } from "./types";
-
-const AMBIENTES_PADRAO = ["Estacao Orbital", "Transito para Marte", "Base Marciana"];
 
 const NOME_AMBIENTE: Record<string, string> = {
   "Estacao Orbital": "Estação Orbital",
   "Transito para Marte": "Trânsito para Marte",
   "Base Marciana": "Base Marciana",
+};
+
+const TEMA_AMBIENTE: Record<string, "mars" | "transit" | "station"> = {
+  "Base Marciana": "mars",
+  "Transito para Marte": "transit",
+  "Estacao Orbital": "station",
 };
 
 const NOME_CENARIO: Record<string, string> = {
@@ -75,9 +88,9 @@ function BotaoTopo({ children, onClick, disabled, cor }: {
   cor: "cyan" | "red" | "emerald";
 }) {
   const estilos = {
-    cyan: "border-cyan-400/70 text-cyan-200 hover:bg-cyan-500/15 shadow-[0_0_10px_rgba(34,211,238,0.25)]",
-    red: "border-red-400/70 text-red-200 hover:bg-red-500/15 shadow-[0_0_10px_rgba(248,113,113,0.25)]",
-    emerald: "border-emerald-400/70 text-emerald-200 hover:bg-emerald-500/15 shadow-[0_0_10px_rgba(52,211,153,0.25)]",
+    cyan: "border-cyan-400/70 text-cyan-200 hover:bg-cyan-500/15",
+    red: "border-red-400/70 text-red-200 hover:bg-red-500/15",
+    emerald: "border-emerald-400/70 text-emerald-200 hover:bg-emerald-500/15",
   };
   return (
     <button
@@ -92,19 +105,20 @@ function BotaoTopo({ children, onClick, disabled, cor }: {
 
 export function App() {
   const [astronautas, setAstronautas] = useState<Astronauta[]>([]);
-  const [ambientes, setAmbientes] = useState<string[]>(AMBIENTES_PADRAO);
   const [idAstronauta, setIdAstronauta] = useState("AST-01");
   const [diaMissao, setDiaMissao] = useState<number | null>(null);
-  const [ambienteRegistro, setAmbienteRegistro] = useState("Base Marciana");
   const [dados, setDados] = useState<Analise | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  // Pop-up "dor enviada para a equipe médica" logo depois de salvar um relato
+  const [relatoEnviado, setRelatoEnviado] = useState<RelatoDesconforto | null>(null);
+  const fecharRelatoEnviado = useCallback(() => setRelatoEnviado(null), []);
   const [regiaoSel, setRegiaoSel] = useState<RegiaoSelecionada | null>(null);
 
-  // Relatos de desconforto por astronauta ({ idAstronauta: { "vista:regiao": relato } }), salvos no navegador
-  const CHAVE_RELATOS = "astrohealth:relatos:v1";
+  // Relatos de desconforto por tripulante e dia ({ "AST-01|360": { "vista:regiao": relato } }), salvos no navegador
+  const CHAVE_RELATOS = "astrohealth:relatos:v2"; // v2: relatos por tripulante E por dia
   const [relatos, setRelatos] = useState<Record<string, Record<string, RelatoDesconforto>>>(() => {
     try {
       return JSON.parse(localStorage.getItem(CHAVE_RELATOS) ?? "{}");
@@ -120,17 +134,34 @@ export function App() {
       /* navegador sem armazenamento: vale só nesta sessão */
     }
   };
+  // HUD gamificado por tripulante: histórico do chat, protocolos aplicados e XP (salvos no navegador)
+  const [hud, setHud] = useState<Record<string, EstadoTripulante>>(carregarHud);
+  const mudarHud = (id: string, f: (e: EstadoTripulante) => EstadoTripulante) =>
+    setHud((atual) => {
+      const novo = { ...atual, [id]: f(atual[id] ?? ESTADO_VAZIO) };
+      salvarHud(novo);
+      return novo;
+    });
+  const [ganho, setGanho] = useState<{ id: number; texto: string } | null>(null);
+  useEffect(() => {
+    if (!ganho) return;
+    const t = setTimeout(() => setGanho(null), 2600);
+    return () => clearTimeout(t);
+  }, [ganho]);
   const [modalRegistro, setModalRegistro] = useState(false);
   const [modalSpinoff, setModalSpinoff] = useState(false);
   const [registrando, setRegistrando] = useState(false);
   const [erroRegistro, setErroRegistro] = useState<string | null>(null);
-  const listaTelemetria = useRef<HTMLDivElement>(null);
   // Evita uma segunda chamada logo depois de registrar (a resposta do registro já traz a análise)
   const pularProximaAnalise = useRef(false);
 
   const astronauta = astronautas.find((a) => a.id_astronauta === idAstronauta);
   const ultimoDia = astronauta?.ultimo_dia ?? 365;
-  const relatosAtuais = useMemo(() => relatos[idAstronauta] ?? {}, [relatos, idAstronauta]);
+  // Cada dia tem seus próprios relatos: trocar de dia esconde a dor; voltar ao dia mostra de novo
+  const chaveRelatos = `${idAstronauta}|${diaMissao}`;
+  const relatosAtuais = useMemo(() => relatos[chaveRelatos] ?? {}, [relatos, chaveRelatos]);
+  // Trocar de dia ou de tripulante fecha o registro de desconforto aberto
+  useEffect(() => setRegiaoSel(null), [chaveRelatos]);
   const listaRelatos = useMemo(() => Object.values(relatosAtuais), [relatosAtuais]);
 
   const carregarAstronautas = useCallback(async () => {
@@ -146,32 +177,36 @@ export function App() {
     }
   }, []);
 
-  // Inicialização: tripulação, ambientes e último dia registrado
+  // Inicialização: tripulação e último dia registrado
   useEffect(() => {
     carregarAstronautas().then((lista) => {
       const primeiro = lista.find((a) => a.id_astronauta === "AST-01") ?? lista[0];
       if (primeiro) {
         setIdAstronauta(primeiro.id_astronauta);
         setDiaMissao(primeiro.ultimo_dia);
-        setAmbienteRegistro(primeiro.ambiente_atual);
       }
     });
-    listarAmbientes().then(setAmbientes).catch(() => undefined);
   }, [carregarAstronautas]);
 
-  const carregarAnalise = useCallback(async (ast: string, dia: number, forcarIa = false, desconfortos: RelatoDesconforto[] = []) => {
+  const carregarAnalise = useCallback(
+    async (ast: string, dia: number, forcarIa = false, desconfortos: RelatoDesconforto[] = []): Promise<Analise | null> => {
     setCarregando(true);
     try {
-      setDados(await analisarDia(ast, dia, forcarIa, desconfortos));
+      const resp = await analisarDia(ast, dia, forcarIa, desconfortos);
+      setDados(resp);
       setBackendOnline(true);
       setErro(null);
+      return resp;
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
       if (e instanceof TypeError) setBackendOnline(false);
+      return null;
     } finally {
       setCarregando(false);
     }
-  }, []);
+  },
+    [],
+  );
 
   // Espera 400 ms sem mudança de dia antes de analisar (cada análise de alerta pode gastar 1 requisição da Groq)
   useEffect(() => {
@@ -194,33 +229,12 @@ export function App() {
   const chaveDia = `${idAstronauta}-${diaMissao}`;
   const picos = useMemo(() => picosPorDia[chaveDia] ?? [], [picosPorDia, chaveDia]);
 
-  // Telemetria ao vivo: a cada 3 s busca a leitura da hora com microvariações (?ao_vivo=true)
-  const [aoVivo, setAoVivo] = useState(false);
-
-  // Layout editável: posições e tamanhos dos quadros, salvos no navegador
-  const [editandoLayout, setEditandoLayout] = useState(false);
-  const [layoutGrade, setLayoutGrade] = useState<Layout[]>(carregarLayout);
-  const mudarLayout = (novo: Layout[]) => {
-    setLayoutGrade(novo);
-    salvarLayout(novo);
-  };
-  const restaurarLayout = () => {
-    limparLayoutSalvo();
-    setLayoutGrade(LAYOUT_PADRAO.map((l) => ({ ...l })));
-  };
-  const [pulsoAoVivo, setPulsoAoVivo] = useState(0);
-  useEffect(() => {
-    if (!aoVivo) return;
-    const t = setInterval(() => setPulsoAoVivo((n) => n + 1), 3000);
-    return () => clearInterval(t);
-  }, [aoVivo]);
-
   useEffect(() => {
     if (diaMissao === null) return;
     let cancelado = false;
     setCarregandoHoraria(true);
     const t = setTimeout(() => {
-      telemetriaHoraria(idAstronauta, diaMissao, horaVirtual, picos, aoVivo)
+      telemetriaHoraria(idAstronauta, diaMissao, horaVirtual, picos)
         .then((r) => !cancelado && setHoraria(r))
         .catch(() => !cancelado && setHoraria(null))
         .finally(() => !cancelado && setCarregandoHoraria(false));
@@ -229,7 +243,7 @@ export function App() {
       cancelado = true;
       clearTimeout(t);
     };
-  }, [idAstronauta, diaMissao, horaVirtual, picos, aoVivo, pulsoAoVivo]);
+  }, [idAstronauta, diaMissao, horaVirtual, picos]);
 
   // Play: avança 1 hora a cada 1,5 s e para às 23:00
   useEffect(() => {
@@ -255,10 +269,8 @@ export function App() {
   const trocarAstronauta = (id: string) => {
     const a = astronautas.find((x) => x.id_astronauta === id);
     setIdAstronauta(id);
-    if (a) {
-      setDiaMissao(a.ultimo_dia);
-      setAmbienteRegistro(a.ambiente_atual);
-    }
+    setRegiaoSel(null); // a região selecionada era do tripulante anterior
+    if (a) setDiaMissao(a.ultimo_dia);
   };
 
   const mudarDia = (delta: number) => {
@@ -266,14 +278,12 @@ export function App() {
     setDiaMissao(Math.min(ultimoDia, Math.max(1, diaMissao + delta)));
   };
 
-  const rolarTelemetria = (direcao: 1 | -1) =>
-    listaTelemetria.current?.scrollBy({ top: direcao * (ALTURA_CARD + 10), behavior: "smooth" });
 
   const executarRegistro = async (opcoes: { medicoes?: Medicoes; simular_anomalia?: boolean }) => {
     setRegistrando(true);
     setErroRegistro(null);
     try {
-      const resp = await registrarDia({ id_astronauta: idAstronauta, ambiente: ambienteRegistro, ...opcoes });
+      const resp = await registrarDia({ id_astronauta: idAstronauta, ...opcoes });
       pularProximaAnalise.current = true;
       setDados(resp);
       setDiaMissao(resp.dia_registrado ?? null);
@@ -334,19 +344,60 @@ export function App() {
 
   const corNivel =
     codigo >= 3
-      ? { texto: "text-red-300", borda: "border-red-500/60", fundo: "bg-red-500/10" }
+      ? { texto: "text-[#EF4444]", borda: "border-[#EF4444]/60", fundo: "bg-[rgba(239,68,68,0.12)]" }
       : codigo === 2
-        ? { texto: "text-amber-300", borda: "border-amber-500/60", fundo: "bg-amber-500/10" }
-        : { texto: "text-green-300", borda: "border-green-500/50", fundo: "bg-green-500/10" };
+        ? { texto: "text-[#FBBF24]", borda: "border-[#FBBF24]/60", fundo: "bg-[#FBBF24]/10" }
+        : { texto: "text-[#34D399]", borda: "border-[#34D399]/50", fundo: "bg-[#34D399]/10" };
 
   const ambienteDia = payload?.contexto_missao.ambiente ?? "";
   const atrasoSinal =
     ambienteDia === "Estacao Orbital" ? "Comunicação com a Terra quase em tempo real" : "Atraso de sinal com a Terra de até ~20 min por trecho";
 
+  // ---------------- HUD: prontidão, chat de contramedidas e sinais resumidos ----------------
+  const estadoHud = hud[idAstronauta] ?? ESTADO_VAZIO;
+  const chaveDiaHud = String(diaMissao ?? 0);
+  const aplicadasDia = estadoHud.aplicadas[chaveDiaHud] ?? [];
+  const nAplicadas = aplicadasDia.length;
+  // Aptidão para EVA: recalcula com o wearable da hora, os dados do dia, os alertas ativos,
+  // os desconfortos do mapa corporal e as contramedidas aplicadas (todos do tripulante selecionado)
+  const prontidao = useMemo(
+    () => calcularAptidaoEva({ ponto: pontoHora, tel: tel ?? null, motivos: motivosMapa, relatos: listaRelatos, nAplicadas }),
+    [pontoHora, tel, motivosMapa, listaRelatos, nAplicadas],
+  );
+
+  const mostrarGanho = (antes: number, depois: number, xpGanho: number) => {
+    const delta = depois - antes;
+    const xpTexto = `${xpGanho > 0 ? "+" : ""}${xpGanho} XP`;
+    const partes = [
+      delta !== 0 ? `${delta > 0 ? "+" : ""}${delta}% Prontidão Operacional` : "",
+      xpGanho !== 0 ? xpTexto : "",
+      delta === 0 && xpGanho > 0 ? "teto da faixa" : "",
+    ].filter(Boolean);
+    if (!partes.length) return;
+    const texto = partes.join(" • ");
+    setGanho({ id: Date.now(), texto });
+  };
+
+  const valorOu = (v: number | null | undefined, unidade: string) => (v === null || v === undefined ? "—" : `${v}${unidade}`);
+  const sinais: SinalResumo[] = tel
+    ? [
+        { rotulo: "FC", valor: valorOu(pontoHora?.fc_bpm ?? tel.fc_repouso.valor, " bpm"), alerta: codigo > 1 && "fc_repouso" in alertas },
+        { rotulo: "SpO₂", valor: valorOu(pontoHora?.spo2_pct, "%") },
+        {
+          rotulo: "PA",
+          valor: `${pontoHora?.pa_sistolica ?? tel.pa_sistolica.valor}/${pontoHora?.pa_diastolica ?? tel.pa_diastolica.valor}`,
+          alerta: codigo > 1 && "pressao_arterial" in alertas,
+        },
+        { rotulo: "Temp", valor: valorOu(pontoHora?.temperatura_c ?? tel.temperatura_c.valor, " °C"), alerta: codigo > 1 && "temperatura_c" in alertas },
+        { rotulo: "Sono", valor: `${tel.sono_horas.valor} h`, alerta: codigo > 1 && "sono_horas" in alertas },
+      ]
+    : [];
+
   const seletor = "rounded border border-cyan-900 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none";
 
   return (
-    <div className="min-h-screen bg-[#03060c] pb-8 text-slate-200 font-sans">
+    // Tema de cores pelo cenário do dia: Base Marciana, Trânsito para Marte ou Estação Orbital
+    <div data-theme={TEMA_AMBIENTE[ambienteDia] ?? "transit"} className="min-h-screen bg-[#03060c] pb-8 text-slate-200 font-sans">
       {/* Vídeo de fundo (Base Marciana em loop): mudo, sem controles, atrás de tudo */}
       <video
         className="pointer-events-none fixed inset-0 h-full w-full object-cover motion-reduce:hidden"
@@ -372,13 +423,16 @@ export function App() {
       />
 
       {/* ============ HEADER (uma linha) ============ */}
-      <header className="relative border-b border-cyan-900/50 bg-[#050a14]/95 px-4 py-2 lg:px-6">
+      <header className="sticky top-0 z-30 border-b border-(--borda) bg-(--card) px-4 py-2 backdrop-blur-md lg:px-6">
         <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 xl:flex-nowrap">
-          <h1 className="whitespace-nowrap text-lg font-bold tracking-tight text-white">
-            AstroHealth <span className="text-cyan-400">Monitor</span>
+          <h1 className="flex items-center gap-2 whitespace-nowrap text-lg font-bold tracking-tight text-white">
+            <LogoApp className="h-7 w-7 shrink-0" />
+            <span>
+              AstroHealth <span className="text-cyan-400">Monitor</span>
+            </span>
           </h1>
 
-          {/* Centro: tripulante, ambiente e status */}
+          {/* Centro: tripulante e status */}
           <div className="flex items-center gap-2">
             <select
               value={idAstronauta}
@@ -394,19 +448,6 @@ export function App() {
                 <option key={a.id_astronauta} value={a.id_astronauta}>
                   {a.id_astronauta}
                   {a.nome ? ` • ${a.nome}` : ""}
-                </option>
-              ))}
-            </select>
-            <select
-              value={ambienteRegistro}
-              onChange={(e) => setAmbienteRegistro(e.target.value)}
-              className={seletor}
-              aria-label="Ambiente do próximo registro"
-              title="Ambiente do próximo registro"
-            >
-              {ambientes.map((a) => (
-                <option key={a} value={a}>
-                  {NOME_AMBIENTE[a] ?? a}
                 </option>
               ))}
             </select>
@@ -440,19 +481,14 @@ export function App() {
             <BotaoTopo cor="emerald" onClick={() => setModalSpinoff(true)}>
               🌀 Spinoff
             </BotaoTopo>
-            <button
-              onClick={() => setAoVivo((v) => !v)}
-              aria-pressed={aoVivo}
-              title="Busca a leitura do wearable a cada 3 s com pequenas oscilações em tempo real"
-              className={`flex items-center gap-1.5 whitespace-nowrap rounded border px-2 py-1.5 font-mono text-[10px] uppercase tracking-wider transition ${
-                aoVivo ? "border-green-500/70 bg-green-500/10 text-green-300" : "border-slate-700 text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${aoVivo ? "animate-pulse bg-green-400" : "bg-slate-600"}`} />
-              Telemetria ao vivo
-            </button>
           </div>
         </div>
+        {/* Barra de prontidão gamificada + sinais vitais resumidos */}
+        {dados && tel && (
+          <div className="mx-auto mt-2 max-w-[1500px] border-t border-(--borda) pt-2">
+            <ProntidaoHUD prontidao={prontidao} xp={estadoHud.xp} ganho={ganho} sinais={sinais} />
+          </div>
+        )}
       </header>
 
       <div className="relative mx-auto max-w-[1500px] px-4 py-4 lg:px-6">
@@ -530,56 +566,12 @@ export function App() {
           {horaria?.coach_exercicio && <CoachCompacto className="mt-3" coach={horaria.coach_exercicio} />}
         </Painel>
 
-        {dados && (
-          <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
-            {editandoLayout && (
-              <span className="mr-auto rounded border border-cyan-800/70 bg-cyan-950/50 px-2 py-1 font-mono text-[10px] text-cyan-200">
-                ✥ Modo de edição: arraste os quadros para mover e puxe as bordas para redimensionar. As posições são salvas automaticamente.
-              </span>
-            )}
-            {editandoLayout && (
-              <button
-                onClick={() => {
-                  // Copia as posições para colar no chat e virar o layout padrão do site
-                  const texto = JSON.stringify(layoutGrade.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })));
-                  navigator.clipboard
-                    ?.writeText(texto)
-                    .then(() => setAviso("Layout copiado. Cole no chat para ele virar o padrão do site."))
-                    .catch(() => setAviso(`Copie manualmente: ${texto}`));
-                }}
-                className="rounded border border-slate-600 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-slate-300 hover:bg-slate-800"
-              >
-                ⧉ Copiar layout
-              </button>
-            )}
-            {editandoLayout && (
-              <button
-                onClick={restaurarLayout}
-                className="rounded border border-slate-600 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-slate-300 hover:bg-slate-800"
-              >
-                ↺ Restaurar padrão
-              </button>
-            )}
-            <button
-              onClick={() => setEditandoLayout((v) => !v)}
-              aria-pressed={editandoLayout}
-              className={`rounded border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition ${
-                editandoLayout
-                  ? "border-green-500/70 bg-green-500/15 text-green-200"
-                  : "border-cyan-800 text-cyan-300 hover:bg-cyan-500/10"
-              }`}
-            >
-              {editandoLayout ? "✓ Concluir edição" : "✎ Editar layout"}
-            </button>
-          </div>
-        )}
-
         {dados && tel && payload && triagem && (
-          <GradeLayout editando={editandoLayout} layout={layoutGrade} onMudar={mudarLayout}>
+          <GradeLayout>
             {/* ============ WEARABLE 24 H ============ */}
             <div key="wearable">
             <WearablePlayer
-              className="h-full overflow-auto"
+              className="h-full"
               dados={horaria}
               hora={horaVirtual}
               tocando={tocando}
@@ -600,8 +592,8 @@ export function App() {
             <Painel
               titulo="Mapa corporal"
               icone={<Satellite className="h-4 w-4" />}
-              className="h-full overflow-auto"
-              extra={<span className="font-mono text-[10px] text-slate-500">{NOME_AMBIENTE[ambienteDia] ?? ambienteDia}</span>}
+              className="h-full"
+              extra={<LocalMissaoWidget ambiente={ambienteDia} dia={diaMissao} />}
             >
               {/* Personagem conforme o tripulante: sexo "F" usa o modelo feminino (ex.: Dra. Helena Vance) */}
               <BodyMap
@@ -612,13 +604,22 @@ export function App() {
                 onSelecionar={setRegiaoSel}
                 onSalvarRelato={(relato) => {
                   const chave = `${relato.vista}:${relato.regiaoId}`;
-                  atualizarRelatos({ ...relatos, [idAstronauta]: { ...relatosAtuais, [chave]: relato } });
-                  setAviso(`Desconforto salvo: ${relato.nome} — ${relato.tipo} ${relato.intensidade}/5. A análise da IA foi atualizada.`);
+                  const novos = { ...relatosAtuais, [chave]: relato };
+                  atualizarRelatos({ ...relatos, [chaveRelatos]: novos });
+                  // Relato novo rende XP; mudar a intensidade de um relato só mexe na prontidão
+                  const xpRelato = chave in relatosAtuais ? 0 : XP_RELATO;
+                  if (xpRelato) mudarHud(idAstronauta, (e) => ({ ...e, xp: e.xp + xpRelato }));
+                  mostrarGanho(
+                    prontidao.valor,
+                    calcularAptidaoEva({ ponto: pontoHora, tel: tel ?? null, motivos: motivosMapa, relatos: Object.values(novos), nAplicadas }).valor,
+                    xpRelato,
+                  );
+                  setRelatoEnviado(relato);
                 }}
                 onRemoverRelato={(chave) => {
                   const resto = { ...relatosAtuais };
                   delete resto[chave];
-                  atualizarRelatos({ ...relatos, [idAstronauta]: resto });
+                  atualizarRelatos({ ...relatos, [chaveRelatos]: resto });
                 }}
               />
               <p className="mt-2 text-center font-mono text-[10px] text-slate-500">Categorias do dia: {triagem.categoria_risco}</p>
@@ -637,7 +638,7 @@ export function App() {
             <Painel
               titulo="Protocolo e contramedidas"
               icone={<Sparkles className="h-4 w-4" />}
-              className="flex h-full flex-col overflow-auto"
+              className="flex h-full flex-col"
               extra={
                 <div className="flex items-center gap-1.5">
                   {ia && (
@@ -695,7 +696,7 @@ export function App() {
                     <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Contramedidas</p>
                     <ol className="mt-1.5 space-y-1.5">
                       {(ia.acao_imediata_astronauta ?? []).map((acao, i) => (
-                        <li key={i} className="flex gap-2 rounded border-l-2 border-cyan-400 bg-slate-900/70 p-2 text-xs text-slate-200">
+                        <li key={i} className="flex gap-2 rounded border-l-2 border-cyan-400 bg-(--subcard) p-2 text-xs text-slate-200">
                           <span className="font-mono text-cyan-400">{String(i + 1).padStart(2, "0")}</span>
                           {acao}
                         </li>
@@ -733,11 +734,11 @@ export function App() {
             {/* ============ TENDÊNCIA PREDITIVA + EXAMES SUGERIDOS ============ */}
             {/* Protegido: um backend antigo (sem esses blocos) não derruba a tela */}
             <div key="predicao">
-              {dados.predicao_tendencia && <PredicaoPanel className="h-full overflow-auto" predicao={dados.predicao_tendencia} />}
+              {dados.predicao_tendencia && <PredicaoPanel className="h-full" predicao={dados.predicao_tendencia} />}
             </div>
             <div key="exames">
             <ExamesPanel
-              className="h-full overflow-auto"
+              className="h-full"
               exames={(horaria?.dia_missao === diaMissao ? horaria.exames_sugeridos : dados.exames_sugeridos) ?? []}
             />
 
@@ -745,17 +746,17 @@ export function App() {
 
             {/* ============ TENDÊNCIA 7 DIAS ============ */}
             <div key="tendencia">
-            <Painel titulo="Tendência — últimos 7 dias" className="flex h-full flex-col overflow-auto">
+            <Painel titulo="Tendência — últimos 7 dias" className="flex h-full flex-col">
               <TendenciaChart serie={dados.serie_7_dias} />
             </Painel>
 
             </div>
 
             {/* ============ TELEMETRIA (rolável) ============ */}
-            <div key="telemetria">
+            {/* self-start: o quadro termina logo depois dos cards (não estica até a altura da Tendência ao lado) */}
+            <div key="telemetria" className="self-start">
             <Painel
               titulo="Telemetria vs. linha de base"
-              className="h-full overflow-auto"
               extra={
                 <span
                   className={`flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold ${corNivel.borda} ${corNivel.texto}`}
@@ -765,12 +766,7 @@ export function App() {
                 </span>
               }
             >
-              <div className="flex gap-2">
-                <div
-                  ref={listaTelemetria}
-                  className="rolagem-fina grid flex-1 auto-rows-min grid-cols-2 gap-2.5 overflow-y-auto pr-1 sm:grid-cols-3"
-                  style={{ height: ALTURA_CARD * 2.6 + 10 * 2 }}
-                >
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                   {CARDS.map((c) => {
                     const d = tel[c.chave] as Desvio;
                     const emAlerta = codigo > 1 && c.alerta in alertas;
@@ -784,11 +780,11 @@ export function App() {
                             ? codigo >= 3
                               ? "border-red-500/60 bg-red-500/10"
                               : "border-amber-500/60 bg-amber-500/10"
-                            : "border-slate-800 bg-slate-900/60"
+                            : "border-slate-800 bg-(--subcard)"
                         }`}
                       >
                         <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{c.rotulo}</p>
-                        <p className="font-mono text-2xl font-bold leading-none text-white">
+                        <p className="font-mono text-2xl font-bold leading-none text-(--dados)">
                           {d.valor}
                           <span className="ml-1.5 text-xs font-normal text-slate-500">{c.unidade}</span>
                         </p>
@@ -813,24 +809,12 @@ export function App() {
                   <div
                     style={{ height: ALTURA_CARD }}
                     className={`flex flex-col justify-between rounded border p-2.5 font-mono text-[11px] ${
-                      tel.sintoma_neuro_ocular !== "Nenhum" ? "border-red-500/60 bg-red-500/10 text-red-300" : "border-slate-800 bg-slate-900/60 text-slate-400"
+                      tel.sintoma_neuro_ocular !== "Nenhum" ? "border-red-500/60 bg-red-500/10 text-red-300" : "border-slate-800 bg-(--subcard) text-slate-400"
                     }`}
                   >
                     <p className="text-[10px] uppercase tracking-wider text-slate-500">Sintoma neuro-ocular</p>
                     <p className="mt-1 text-sm">{tel.sintoma_neuro_ocular}</p>
                   </div>
-                </div>
-
-                {/* Trilho com setas ▲ ▼ */}
-                <div className="flex flex-col items-center justify-between">
-                  <button onClick={() => rolarTelemetria(-1)} className="rounded p-0.5 text-cyan-500/70 hover:text-cyan-300" aria-label="Rolar para cima">
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  </button>
-                  <span className="w-px flex-1 bg-cyan-900/60" />
-                  <button onClick={() => rolarTelemetria(1)} className="rounded p-0.5 text-cyan-500/70 hover:text-cyan-300" aria-label="Rolar para baixo">
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                </div>
               </div>
             </Painel>
 
@@ -841,7 +825,7 @@ export function App() {
 
       {/* Aviso de registro: flutuante, some sozinho */}
       {aviso && (
-        <div className="fixed right-4 bottom-10 z-40 max-w-md rounded border border-cyan-700 bg-[#06111f]/95 p-3 text-xs text-cyan-100 shadow-[0_0_20px_rgba(34,211,238,0.2)]">
+        <div className="fixed right-4 bottom-10 z-40 max-w-md rounded border border-cyan-700 bg-[#06111f]/95 p-3 text-xs text-cyan-100">
           <div className="flex items-start gap-3">
             <span className="flex-1">{aviso}</span>
             <button onClick={() => setAviso(null)} className="text-cyan-400 hover:text-white" aria-label="Fechar aviso">
@@ -859,7 +843,7 @@ export function App() {
       <RegistroModal
         aberto={modalRegistro}
         proximoDia={ultimoDia + 1}
-        ambiente={NOME_AMBIENTE[ambienteRegistro] ?? ambienteRegistro}
+        ambiente={NOME_AMBIENTE[astronauta?.ambiente_atual ?? ""] ?? astronauta?.ambiente_atual ?? "—"}
         nomeAstronauta={astronauta ? `${astronauta.id_astronauta} • ${astronauta.nome}` : idAstronauta}
         referencia={tel ?? null}
         enviando={registrando}
@@ -869,6 +853,7 @@ export function App() {
         onSimularNormal={() => executarRegistro({ simular_anomalia: false })}
       />
       <SpinoffModal aberto={modalSpinoff} onFechar={() => setModalSpinoff(false)} />
+      <RelatoEnviadoPopup relato={relatoEnviado} onFechar={fecharRelatoEnviado} />
     </div>
   );
 }
