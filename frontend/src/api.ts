@@ -28,13 +28,20 @@ export const listarAstronautas = () => pedir<Astronauta[]>("/astronautas");
 
 export const listarAmbientes = () => pedir<string[]>("/ambientes");
 
-export const analisarDia = (id_astronauta: string, dia_missao: number, forcar_ia = false, desconfortos: RelatoDesconforto[] = []) =>
+export const analisarDia = (
+  id_astronauta: string,
+  dia_missao: number,
+  forcar_ia = false,
+  desconfortos: RelatoDesconforto[] = [],
+  pergunta?: string, // pergunta do Chat de Contramedidas
+) =>
   pedir<Analise>("/analisar-ia", {
     method: "POST",
     body: JSON.stringify({
       id_astronauta,
       dia_missao,
       forcar_ia,
+      pergunta,
       // Sintomas relatados pelo astronauta, para a IA cruzar com os sinais vitais
       desconfortos: desconfortos.map(({ regiaoId, vista, nome, tipo, intensidade, detalhe }) => ({
         regiao: regiaoId,

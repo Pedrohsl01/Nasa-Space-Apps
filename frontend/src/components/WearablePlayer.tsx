@@ -123,7 +123,7 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
         </div>
 
         {/* Atividade atual da rotina */}
-        <div className="flex min-w-48 flex-1 items-center gap-2 rounded border border-slate-800 bg-slate-900/60 px-3 py-1">
+        <div className="flex min-w-48 flex-1 items-center gap-2 rounded border border-slate-800 bg-(--subcard) px-3 py-1">
           <span className="text-xl" aria-hidden="true">{ponto ? ICONE_PERFIL[ponto.perfil] ?? "•" : "•"}</span>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-white">{ponto?.atividade ?? "—"}</p>
@@ -137,7 +137,7 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
         <button
           onClick={onPico}
           disabled={!ponto || jaTemPico || carregando}
-          className="flex items-center gap-1.5 whitespace-nowrap rounded border border-amber-400/70 px-2.5 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-amber-200 shadow-[0_0_10px_rgba(251,191,36,0.25)] hover:bg-amber-500/15 disabled:opacity-40"
+          className="flex items-center gap-1.5 whitespace-nowrap rounded border border-amber-400/70 px-2.5 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-amber-200 hover:bg-amber-500/15 disabled:opacity-40"
         >
           <Zap className="h-3.5 w-3.5" /> Simular pico wearable
         </button>
@@ -176,11 +176,11 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
             <div
               key={s.chave as string}
               className={`rounded border px-2 py-1 ${
-                nivel >= 3 ? "border-red-500/70 bg-red-500/10" : nivel === 2 ? "border-amber-500/70 bg-amber-500/10" : "border-slate-800 bg-slate-900/60"
+                nivel >= 3 ? "border-red-500/70 bg-red-500/10" : nivel === 2 ? "border-amber-500/70 bg-amber-500/10" : "border-slate-800 bg-(--subcard)"
               }`}
             >
               <p className="font-mono text-[9px] uppercase tracking-wider text-slate-500">{s.rotulo}</p>
-              <p className="font-mono text-lg font-bold leading-tight text-white">
+              <p className="font-mono text-lg font-bold leading-tight text-(--dados)">
                 {oscilar(s, i)}
                 {s.chave === "pa_sistolica" && typeof ponto?.pa_diastolica === "number" && (
                   <span className="text-sm text-slate-300">/{ponto.pa_diastolica}</span>

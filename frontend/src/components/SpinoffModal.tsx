@@ -41,7 +41,7 @@ export function SpinoffModal({ aberto, onFechar }: SpinoffModalProps) {
   if (!aberto) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" role="dialog" aria-modal="true">
-      <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-lg border border-cyan-800/70 bg-[#070d18] shadow-[0_0_40px_rgba(34,211,238,0.15)]">
+      <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-lg border border-(--borda) bg-(--card) backdrop-blur-md">
         <div className="flex items-center justify-between border-b border-cyan-900/60 px-5 py-3">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-400">Spinoff Terra ↔ Espaço</p>
@@ -59,7 +59,7 @@ export function SpinoffModal({ aberto, onFechar }: SpinoffModalProps) {
             </h3>
             <ul className="space-y-3">
               {DO_ESPACO_PARA_TERRA.map((item) => (
-                <li key={item.titulo} className="rounded border border-slate-800 bg-slate-900/60 p-3">
+                <li key={item.titulo} className="rounded border border-slate-800 bg-(--subcard) p-3">
                   <p className="text-sm font-semibold text-slate-100">{item.titulo}</p>
                   <p className="mt-1 text-xs leading-relaxed text-slate-400">{item.texto}</p>
                 </li>
@@ -72,7 +72,7 @@ export function SpinoffModal({ aberto, onFechar }: SpinoffModalProps) {
             </h3>
             <ul className="space-y-3">
               {DESTE_PROJETO_PARA_TERRA.map((item) => (
-                <li key={item.titulo} className="rounded border border-slate-800 bg-slate-900/60 p-3">
+                <li key={item.titulo} className="rounded border border-slate-800 bg-(--subcard) p-3">
                   <p className="text-sm font-semibold text-slate-100">{item.titulo}</p>
                   <p className="mt-1 text-xs leading-relaxed text-slate-400">{item.texto}</p>
                 </li>

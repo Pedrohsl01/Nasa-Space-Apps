@@ -179,7 +179,7 @@ export function BodyMap({ genero, motivos, relatos, selecionada, onSelecionar, o
             svgs.current[vista] = el;
           }}
           viewBox={`0 0 ${dados.largura} ${dados.altura}`}
-          className="h-[20rem] w-auto overflow-visible"
+          className="h-[22rem] w-auto overflow-visible xl:h-[26rem]"
           aria-label={`Mapa corporal do astronauta — vista ${vista === "frente" ? "frontal" : "de costas"}`}
           onMouseLeave={() => {
             setHover(null);
@@ -439,7 +439,8 @@ export function BodyMap({ genero, motivos, relatos, selecionada, onSelecionar, o
             titulo={`${selReg.nome} (${NOME_VISTA[selecionada.vista]})`}
             descricao={`${ZONAS[zonaDaRegiao(selReg.id)].sistema} • Perigo NASA HRP: ${ZONAS[zonaDaRegiao(selReg.id)].perigo}`}
             existente={relatos[selChave] ?? null}
-            onSalvar={({ tipo, intensidade, detalhe }) =>
+            // Salvar ou remover fecha o registro (libera a seleção da região)
+            onSalvar={({ tipo, intensidade, detalhe }) => {
               onSalvarRelato({
                 regiaoId: selReg.id,
                 vista: selecionada.vista,
@@ -448,9 +449,13 @@ export function BodyMap({ genero, motivos, relatos, selecionada, onSelecionar, o
                 intensidade,
                 detalhe,
                 criadoEm: new Date().toISOString(),
-              })
-            }
-            onRemover={() => onRemoverRelato(selChave)}
+              });
+              onSelecionar(null);
+            }}
+            onRemover={() => {
+              onRemoverRelato(selChave);
+              onSelecionar(null);
+            }}
             onFechar={() => onSelecionar(null)}
           />
         ) : (

@@ -38,9 +38,9 @@ export function PredicaoPanel({ predicao, className = "" }: { predicao: Predicao
           Sem tendência de piora: sono, FC, pressão, radiação, treino e humor estáveis na janela.
         </p>
       ) : (
-        <ul className="rolagem-fina max-h-72 space-y-2 overflow-y-auto pr-1">
+        <ul className="space-y-2">
           {predicao.riscos.map((r) => (
-            <li key={r.id} className="rounded border border-slate-800 bg-slate-900/60 p-3">
+            <li key={r.id} className="rounded border border-slate-800 bg-(--subcard) p-3">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm font-semibold text-white">{r.titulo}</p>
                 <span
@@ -96,9 +96,9 @@ export function ExamesPanel({ exames, className = "" }: { exames: ExameSugerido[
           Dados completos e consistentes: nenhum exame complementar sugerido.
         </p>
       ) : (
-        <ul className="rolagem-fina max-h-72 space-y-2 overflow-y-auto pr-1">
+        <ul className="space-y-2">
           {exames.map((e) => (
-            <li key={e.exame} className="rounded border border-slate-800 bg-slate-900/60 p-3">
+            <li key={e.exame} className="rounded border border-slate-800 bg-(--subcard) p-3">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm font-semibold text-white">{e.exame}</p>
                 <span className={`whitespace-nowrap rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase ${COR_PRIORIDADE[e.prioridade]}`}>
@@ -168,13 +168,13 @@ export function CoachPanel({ coach, className = "" }: { coach: CoachExercicio; c
           </div>
         </div>
 
-        <div className="flex items-center gap-2 rounded border border-slate-800 bg-slate-900/60 px-3 py-2">
+        <div className="flex items-center gap-2 rounded border border-slate-800 bg-(--subcard) px-3 py-2">
           <Flame className="h-4 w-4 text-orange-400" />
           <span className="font-mono text-sm font-bold text-white">{coach.streak_dias}</span>
           <span className="text-[11px] text-slate-400">dia(s) seguidos na meta</span>
         </div>
 
-        <p className={`rounded border-l-2 border-cyan-400 bg-slate-900/70 p-2 text-xs text-slate-200`}>💬 {coach.recomendacao}</p>
+        <p className={`rounded border-l-2 border-cyan-400 bg-(--subcard) p-2 text-xs text-slate-200`}>💬 {coach.recomendacao}</p>
         <p className="font-mono text-[9px] text-slate-600">Meta operacional do projeto: 60 min/dia contra atrofia muscular e perda óssea.</p>
       </div>
     </Painel>

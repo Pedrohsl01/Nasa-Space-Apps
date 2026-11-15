@@ -1,5 +1,35 @@
 @import "tailwindcss";
 
+/* ============ Temas por cenário da missão (data-theme no contêiner do app) ============
+   --card: fundo dos cards  --subcard: sub-cards internos  --borda: bordas principais
+   --canto: cantoneiras HUD  --destaque: títulos/destaques  --dados: valores de telemetria
+   Status médicos são fixos em todos os temas: nominal #34D399, atenção #FBBF24, crítico #EF4444 */
+:root,
+[data-theme="transit"] {
+  --card: rgba(14, 18, 26, 0.88);
+  --subcard: rgba(22, 28, 39, 0.8);
+  --borda: rgba(148, 184, 235, 0.14);
+  --canto: rgba(91, 155, 213, 0.45);
+  --destaque: #5b9bd5;
+  --dados: #38bdf8;
+}
+[data-theme="mars"] {
+  --card: rgba(22, 18, 16, 0.88);
+  --subcard: rgba(34, 28, 25, 0.8);
+  --borda: rgba(231, 180, 150, 0.14);
+  --canto: rgba(217, 119, 66, 0.45);
+  --destaque: #d97742;
+  --dados: #38bdf8;
+}
+[data-theme="station"] {
+  --card: rgba(20, 23, 28, 0.86);
+  --subcard: rgba(226, 232, 240, 0.07);
+  --borda: rgba(226, 232, 240, 0.24);
+  --canto: rgba(241, 245, 249, 0.75);
+  --destaque: #f1f5f9;
+  --dados: #22d3ee;
+}
+
 /* Trilha fina do seletor de dia: parte percorrida em ciano, ponto brilhante no dia atual */
 .trilha-dia {
   -webkit-appearance: none;
@@ -42,99 +72,62 @@
   border-radius: 999px;
 }
 
-/* ============ Grade editável (react-grid-layout) ============ */
-.react-grid-item.react-grid-placeholder {
-  background: rgba(34, 211, 238, 0.18);
-  border: 1px dashed rgba(34, 211, 238, 0.8);
-  border-radius: 6px;
-  opacity: 1;
+/* ============ Grade dos painéis ============
+   Tela larga: 4 colunas. O mapa ocupa 2 linhas à esquerda; à direita, protocolo em cima e temperatura + dispositivo embaixo.
+   Tela estreita: uma coluna, na ordem abaixo. */
+.grade-painel {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "w" "m" "p" "t" "d" "pr" "ex" "te" "tl";
 }
-/* No modo de edição, uma película cobre o conteúdo: o quadro inteiro vira "alça" de arrastar */
-.grade-editando .react-grid-item {
-  outline: 1px dashed rgba(34, 211, 238, 0.55);
-  outline-offset: 2px;
-  border-radius: 6px;
-  cursor: move;
+@media (min-width: 1024px) {
+  .grade-painel {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-areas:
+      "w w w w"
+      "m m p p"
+      "m m t d"
+      "pr pr ex ex"
+      "te te tl tl";
+  }
 }
-.grade-editando .react-grid-item::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  border-radius: 6px;
-  background: rgba(8, 47, 73, 0.18);
-}
-.grade-editando .react-grid-item:hover::after {
-  background: rgba(34, 211, 238, 0.08);
-}
-.grade-editando .react-grid-item.react-draggable-dragging {
-  z-index: 30;
-  box-shadow: 0 0 24px rgba(34, 211, 238, 0.35);
-}
-/* Alças de redimensionar visíveis no fundo escuro, acima da película */
-.react-grid-item > .react-resizable-handle {
-  z-index: 20;
-}
-.react-grid-item > .react-resizable-handle::after {
-  border-color: rgba(103, 232, 249, 0.9) !important;
-}
-.react-grid-item > .react-resizable-handle-n,
-.react-grid-item > .react-resizable-handle-s,
-.react-grid-item > .react-resizable-handle-e,
-.react-grid-item > .react-resizable-handle-w {
-  background: none;
-}
-.react-grid-item > .react-resizable-handle-n::before,
-.react-grid-item > .react-resizable-handle-s::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  width: 28px;
-  height: 3px;
-  margin-left: -14px;
-  border-radius: 2px;
-  background: rgba(103, 232, 249, 0.8);
-}
-.react-grid-item > .react-resizable-handle-n::before { top: 4px; }
-.react-grid-item > .react-resizable-handle-s::before { bottom: 4px; }
-.react-grid-item > .react-resizable-handle-e::before,
-.react-grid-item > .react-resizable-handle-w::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  width: 3px;
-  height: 28px;
-  margin-top: -14px;
-  border-radius: 2px;
-  background: rgba(103, 232, 249, 0.8);
-}
-.react-grid-item > .react-resizable-handle-e::before { right: 4px; }
-.react-grid-item > .react-resizable-handle-w::before { left: 4px; }
 
-/* Rolagem dentro dos quadros da grade: barra fina, invisível até passar o mouse (evita a barra branca padrão) */
-.react-grid-item section {
+/* Rolagem (só onde ainda existe): barra fina, invisível até passar o mouse */
+.grade-painel section {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
-.react-grid-item section:hover {
+.grade-painel section:hover {
   scrollbar-color: rgba(34, 211, 238, 0.45) transparent;
 }
-.react-grid-item section::-webkit-scrollbar {
+.grade-painel section::-webkit-scrollbar {
   width: 4px;
   height: 4px;
 }
-.react-grid-item section::-webkit-scrollbar-track {
+.grade-painel section::-webkit-scrollbar-track {
   background: transparent;
 }
-.react-grid-item section::-webkit-scrollbar-thumb {
+.grade-painel section::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 999px;
 }
-.react-grid-item section:hover::-webkit-scrollbar-thumb {
+.grade-painel section:hover::-webkit-scrollbar-thumb {
   background: rgba(34, 211, 238, 0.45);
 }
 
-/* Fora do modo de edição as alças de redimensionar ficam escondidas */
-.react-grid-layout:not(.grade-editando) .react-resizable-handle {
-  display: none;
+/* HUD: feedback de ganho de prontidão (sobe e some) */
+@keyframes hud-ganho {
+  0% { opacity: 0; transform: translateY(6px); }
+  15% { opacity: 1; transform: translateY(0); }
+  80% { opacity: 1; transform: translateY(-4px); }
+  100% { opacity: 0; transform: translateY(-10px); }
 }
+.hud-ganho { animation: hud-ganho 2.6s ease-out forwards; }
+@media (prefers-reduced-motion: reduce) { .hud-ganho { animation: none; } }
+
+/* Pop-up de relato enviado: entra com leve zoom */
+@keyframes relato-popup {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+.relato-popup { animation: relato-popup 0.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .relato-popup { animation: none; } }
