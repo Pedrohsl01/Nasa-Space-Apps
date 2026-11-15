@@ -72,6 +72,23 @@ def obter_telemetria_dia(id_astronauta: str, dia_missao: int):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@app.get("/api/telemetria-horaria/{id_astronauta}/{dia_missao}")
+def obter_telemetria_horaria(id_astronauta: str, dia_missao: int, hora: int = 23, picos: str = ""):
+    """
+    24 pontos de wearable (00:00–23:00) gerados a partir do registro do dia, sem gravar no .xlsx.
+    - hora: hora do relógio virtual (0–23), usada pelo coach de exercício
+    - picos: horas com pico agudo simulado, separadas por vírgula (ex.: "14,15")
+    """
+    try:
+        lista_picos = [int(h) for h in picos.split(",") if h.strip() != ""]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="picos deve ser uma lista de horas separadas por vírgula, ex.: 14,15")
+    try:
+        return engine.telemetria_horaria(id_astronauta, dia_missao, hora, lista_picos)
+    except ValueError as e:
+        raise HTTPException(status_code=404 if "não encontrado" in str(e) else 400, detail=str(e))
+
+
 @app.post("/api/analisar-ia")
 def executar_analise_completa(req: AnaliseRequest):
     try:

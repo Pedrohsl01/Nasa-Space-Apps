@@ -61,7 +61,95 @@ export interface UsoGroq {
   };
 }
 
+export interface RiscoTendencia {
+  id: string;
+  titulo: string;
+  categoria: string;
+  perigo_nasa: string;
+  severidade: "emergente" | "provavel";
+  evidencias: string[];
+  contramedidas_preventivas: string[];
+}
+
+export interface PredicaoTendencia {
+  janela_dias: number;
+  inicio?: number;
+  fim?: number;
+  riscos: RiscoTendencia[];
+  nivel: "estavel" | "observacao" | "atencao" | "dados_insuficientes";
+  resumo: string;
+}
+
+export interface ExameSugerido {
+  exame: string;
+  motivo: string;
+  procedimento: string;
+  prioridade: "alta" | "media" | "baixa";
+  tipo: "ausente" | "inconsistente" | "inconclusivo";
+}
+
+export interface AlertaHora {
+  sinal: string;
+  nivel: number;
+  texto: string;
+}
+
+export interface PontoHorario {
+  hora: number;
+  rotulo: string;
+  atividade: string;
+  descricao: string;
+  perfil: string;
+  treino_min: number;
+  treino_min_acumulado: number;
+  sem_sinal: boolean;
+  pico_simulado: string | null;
+  esperado: Record<string, number>;
+  fc_bpm: number | null;
+  pa_sistolica: number | null;
+  pa_diastolica: number | null;
+  temperatura_c: number | null;
+  spo2_pct: number | null;
+  hrv_ms: number | null;
+  estresse_wearable: number | null;
+  semaforo_hora: number;
+  partes_afetadas: string;
+  alertas: AlertaHora[];
+}
+
+export interface CoachExercicio {
+  meta_diaria_min: number;
+  concluido_min: number;
+  deficit_min: number;
+  progresso_dia_pct: number;
+  semana_min: number;
+  meta_semana_min: number;
+  progresso_semana_pct: number;
+  streak_dias: number;
+  hora: number;
+  atividade_atual: string;
+  status: "meta_cumprida" | "no_caminho" | "atencao" | "critico";
+  recomendacao: string;
+}
+
+export interface TelemetriaHoraria {
+  id_astronauta: string;
+  dia_missao: number;
+  ambiente: string;
+  inicio_sono: number;
+  horas_sem_sinal: number[];
+  picos: number[];
+  pontos: PontoHorario[];
+  hora: number;
+  ponto_atual: PontoHorario;
+  coach_exercicio: CoachExercicio;
+  exames_sugeridos: ExameSugerido[];
+  nota: string;
+}
+
 export interface Analise {
+  predicao_tendencia: PredicaoTendencia;
+  exames_sugeridos: ExameSugerido[];
   payload_compacto: {
     contexto_missao: {
       id_astronauta: string;

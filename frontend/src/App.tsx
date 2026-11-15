@@ -17,8 +17,12 @@ import { BodyMap, type Zona } from "./components/BodyMap";
 import { META_TREINO, TendenciaChart } from "./components/TendenciaChart";
 import { RegistroModal } from "./components/RegistroModal";
 import { SpinoffModal } from "./components/SpinoffModal";
-import { analisarDia, listarAmbientes, listarAstronautas, registrarDia } from "./api";
-import type { Analise, Astronauta, Desvio, Medicoes } from "./types";
+import { DispositivoWidget, RelogioWidget, TemperaturaExternaWidget } from "./components/Widgets";
+import { Painel } from "./components/Painel";
+import { WearablePlayer } from "./components/WearablePlayer";
+import { CoachPanel, ExamesPanel, PredicaoPanel } from "./components/PaineisAnalise";
+import { analisarDia, listarAmbientes, listarAstronautas, registrarDia, telemetriaHoraria } from "./api";
+import type { Analise, Astronauta, Desvio, Medicoes, TelemetriaHoraria } from "./types";
 
 const AMBIENTES_PADRAO = ["Estacao Orbital", "Transito para Marte", "Base Marciana"];
 
@@ -57,30 +61,6 @@ function formatarDesvio(d: Desvio) {
   const sinal = d.desvio > 0 ? "+" : "";
   const casas = Number.isInteger(d.base) && Number.isInteger(d.valor) ? 0 : 1;
   return `${sinal}${d.desvio.toFixed(casas)} (${sinal}${d.desvio_pct?.toFixed(0)}%)`;
-}
-
-function Painel({ titulo, icone, children, extra, className = "" }: {
-  titulo: string;
-  icone?: React.ReactNode;
-  children: React.ReactNode;
-  extra?: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={`relative rounded-md border border-cyan-900/50 bg-[#070d18]/90 p-4 ${className}`}>
-      {/* Cantos estilo console */}
-      <span className="pointer-events-none absolute -top-px -left-px h-3 w-3 border-t-2 border-l-2 border-cyan-500/70" />
-      <span className="pointer-events-none absolute -bottom-px -right-px h-3 w-3 border-b-2 border-r-2 border-cyan-500/70" />
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300">
-          {icone}
-          {titulo}
-        </h3>
-        {extra}
-      </div>
-      {children}
-    </section>
-  );
 }
 
 // Botão do header: borda fina e brilho suave, mesmo visual para os quatro
@@ -180,6 +160,45 @@ export function App() {
     return () => clearTimeout(t);
   }, [idAstronauta, diaMissao, carregarAnalise]);
 
+  // ---------------- Wearable 24 h: relógio virtual, play/pause e picos simulados ----------------
+  const [horaVirtual, setHoraVirtual] = useState(() => new Date().getHours());
+  const [tocando, setTocando] = useState(false);
+  const [picosPorDia, setPicosPorDia] = useState<Record<string, number[]>>({});
+  const [horaria, setHoraria] = useState<TelemetriaHoraria | null>(null);
+  const [carregandoHoraria, setCarregandoHoraria] = useState(false);
+  const chaveDia = `${idAstronauta}-${diaMissao}`;
+  const picos = useMemo(() => picosPorDia[chaveDia] ?? [], [picosPorDia, chaveDia]);
+
+  useEffect(() => {
+    if (diaMissao === null) return;
+    let cancelado = false;
+    setCarregandoHoraria(true);
+    const t = setTimeout(() => {
+      telemetriaHoraria(idAstronauta, diaMissao, horaVirtual, picos)
+        .then((r) => !cancelado && setHoraria(r))
+        .catch(() => !cancelado && setHoraria(null))
+        .finally(() => !cancelado && setCarregandoHoraria(false));
+    }, 120);
+    return () => {
+      cancelado = true;
+      clearTimeout(t);
+    };
+  }, [idAstronauta, diaMissao, horaVirtual, picos]);
+
+  // Play: avança 1 hora a cada 1,5 s e para às 23:00
+  useEffect(() => {
+    if (!tocando) return;
+    if (horaVirtual >= 23) {
+      setTocando(false);
+      return;
+    }
+    const t = setTimeout(() => setHoraVirtual((h) => Math.min(23, h + 1)), 1500);
+    return () => clearTimeout(t);
+  }, [tocando, horaVirtual]);
+
+  const simularPico = () =>
+    setPicosPorDia((atual) => ({ ...atual, [chaveDia]: [...new Set([...(atual[chaveDia] ?? []), horaVirtual])] }));
+
   // Avisos somem sozinhos depois de alguns segundos
   useEffect(() => {
     if (!aviso) return;
@@ -239,6 +258,17 @@ export function App() {
   const alertas = payload?.indicadores_em_alerta ?? {};
   const iaOnline = ia ? ia.fonte_analise.startsWith("Copiloto IA") : false;
 
+  // Mapa corporal combina a triagem do dia com o alerta da hora do wearable (ex.: pico simulado)
+  const pontoHora = horaria?.dia_missao === diaMissao ? horaria.ponto_atual : null;
+  const alertaHora = pontoHora && pontoHora.semaforo_hora > 1 ? pontoHora : null;
+  const partesMapa = useMemo(() => {
+    const dia = (triagem?.partes_afetadas ?? "nenhuma").split(";").filter((p) => p && p !== "nenhuma");
+    const hora = alertaHora ? alertaHora.partes_afetadas.split(";").filter((p) => p && p !== "nenhuma") : [];
+    const todas = [...new Set([...dia, ...hora])];
+    return todas.length ? todas.join(";") : "nenhuma";
+  }, [triagem, alertaHora]);
+  const codigoMapa = Math.max(codigo, alertaHora?.semaforo_hora ?? 1);
+
   // Gamificação: metas diárias simples e transparentes (metas do projeto, não clínicas)
   const missoes = useMemo(() => {
     if (!tel) return [];
@@ -266,6 +296,20 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-[#03060c] pb-8 text-slate-200 font-sans">
+      {/* Vídeo de fundo (Base Marciana em loop): mudo, sem controles, atrás de tudo */}
+      <video
+        className="pointer-events-none fixed inset-0 h-full w-full object-cover motion-reduce:hidden"
+        src="/video/base_marciana_loop.mp4"
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+        aria-hidden="true"
+      />
+      {/* Camada escura por cima do vídeo para manter os painéis legíveis */}
+      <div className="pointer-events-none fixed inset-0 bg-gradient-to-b from-[#03060c]/75 via-[#03060c]/65 to-[#03060c]/85" />
+
       {/* Fundo com grade sutil */}
       <div
         className="pointer-events-none fixed inset-0 opacity-[0.07]"
@@ -423,23 +467,52 @@ export function App() {
         </Painel>
 
         {dados && tel && payload && triagem && (
-          <main className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {/* ============ SUPERIOR ESQUERDA: MAPA CORPORAL ============ */}
+          <main className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+            {/* ============ WEARABLE 24 H + COACH ============ */}
+            <WearablePlayer
+              className="lg:col-span-8"
+              dados={horaria}
+              hora={horaVirtual}
+              tocando={tocando}
+              carregando={carregandoHoraria}
+              onHora={(h) => {
+                setTocando(false);
+                setHoraVirtual(h);
+              }}
+              onTocar={(t) => {
+                if (t && horaVirtual >= 23) setHoraVirtual(0);
+                setTocando(t);
+              }}
+              onPico={simularPico}
+            />
+            {horaria?.coach_exercicio ? (
+              <CoachPanel className="lg:col-span-4" coach={horaria.coach_exercicio} />
+            ) : (
+              <div className="lg:col-span-4" />
+            )}
+
+            {/* ============ MAPA CORPORAL ============ */}
             <Painel
               titulo="Mapa corporal"
               icone={<Satellite className="h-4 w-4" />}
-              className=""
+              className="lg:col-span-6"
               extra={<span className="font-mono text-[10px] text-slate-500">{NOME_AMBIENTE[ambienteDia] ?? ambienteDia}</span>}
             >
-              <BodyMap partesAfetadas={triagem.partes_afetadas} codigoSemaforo={codigo} zonaSelecionada={zona} onSelectZona={setZona} />
-              <p className="mt-2 text-center font-mono text-[10px] text-slate-500">Categorias: {triagem.categoria_risco}</p>
+              <BodyMap partesAfetadas={partesMapa} codigoSemaforo={codigoMapa} zonaSelecionada={zona} onSelectZona={setZona} />
+              <p className="mt-2 text-center font-mono text-[10px] text-slate-500">Categorias do dia: {triagem.categoria_risco}</p>
+              {alertaHora && (
+                <p className={`mt-1 text-center font-mono text-[10px] ${alertaHora.semaforo_hora >= 3 ? "text-red-300" : "text-amber-300"}`}>
+                  ⚡ Wearable {alertaHora.rotulo}: {alertaHora.pico_simulado ? "pico simulado — " : ""}
+                  {alertaHora.alertas.map((a) => a.texto).join(" • ")}
+                </p>
+              )}
             </Painel>
 
             {/* ============ SUPERIOR DIREITA: PROTOCOLO E CONTRAMEDIDAS ============ */}
             <Painel
               titulo="Protocolo e contramedidas"
               icone={<Sparkles className="h-4 w-4" />}
-              className="flex flex-col"
+              className="flex flex-col lg:col-span-3"
               extra={
                 <button
                   onClick={() => diaMissao && carregarAnalise(idAstronauta, diaMissao, true)}
@@ -496,15 +569,30 @@ export function App() {
                 )}
               </div>
             </Painel>
+            {/* ============ SUPERIOR, EXTREMA DIREITA: WIDGETS ============ */}
+            <div className="flex flex-col gap-3 lg:col-span-3">
+              <DispositivoWidget />
+              <RelogioWidget />
+              <TemperaturaExternaWidget ambiente={ambienteDia} dia={diaMissao} />
+            </div>
+
+            {/* ============ TENDÊNCIA PREDITIVA + EXAMES SUGERIDOS ============ */}
+            {/* Protegido: um backend antigo (sem esses blocos) não derruba a tela */}
+            {dados.predicao_tendencia && <PredicaoPanel className="lg:col-span-6" predicao={dados.predicao_tendencia} />}
+            <ExamesPanel
+              className="lg:col-span-6"
+              exames={(horaria?.dia_missao === diaMissao ? horaria.exames_sugeridos : dados.exames_sugeridos) ?? []}
+            />
+
             {/* ============ INFERIOR ESQUERDA: TENDÊNCIA 7 DIAS ============ */}
-            <Painel titulo="Tendência — últimos 7 dias" className="flex flex-col">
+            <Painel titulo="Tendência — últimos 7 dias" className="flex flex-col lg:col-span-6">
               <TendenciaChart serie={dados.serie_7_dias} />
             </Painel>
 
             {/* ============ INFERIOR DIREITA: TELEMETRIA (rolável) ============ */}
             <Painel
               titulo="Telemetria vs. linha de base"
-              className=""
+              className="lg:col-span-6"
               extra={
                 <span
                   className={`flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold ${corNivel.borda} ${corNivel.texto}`}
