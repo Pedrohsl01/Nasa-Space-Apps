@@ -13,17 +13,20 @@ import {
   Sparkles,
   Trophy,
 } from "lucide-react";
-import { BodyMap, type Zona } from "./components/BodyMap";
+import { BodyMap, type RegiaoSelecionada } from "./components/BodyMap";
 import { motivosPorZona } from "./components/motivosAlerta";
 import { META_TREINO, TendenciaChart } from "./components/TendenciaChart";
 import { RegistroModal } from "./components/RegistroModal";
 import { SpinoffModal } from "./components/SpinoffModal";
-import { DispositivoWidget, RelogioWidget, TemperaturaExternaWidget } from "./components/Widgets";
+import { DispositivoWidget, TemperaturaExternaWidget } from "./components/Widgets";
 import { Painel } from "./components/Painel";
+import { GradeLayout, LAYOUT_PADRAO, carregarLayout, limparLayoutSalvo, salvarLayout } from "./components/GradeLayout";
+import type { Layout } from "react-grid-layout";
 import { WearablePlayer } from "./components/WearablePlayer";
-import { CoachPanel, ExamesPanel, PredicaoPanel } from "./components/PaineisAnalise";
+import { CoachCompacto } from "./components/CoachCompacto";
+import { ExamesPanel, PredicaoPanel } from "./components/PaineisAnalise";
 import { analisarDia, listarAmbientes, listarAstronautas, registrarDia, telemetriaHoraria } from "./api";
-import type { Analise, Astronauta, Desvio, Medicoes, TelemetriaHoraria } from "./types";
+import type { Analise, Astronauta, Desvio, Medicoes, RelatoDesconforto, TelemetriaHoraria } from "./types";
 
 const AMBIENTES_PADRAO = ["Estacao Orbital", "Transito para Marte", "Base Marciana"];
 
@@ -98,7 +101,25 @@ export function App() {
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [zona, setZona] = useState<Zona | null>("peito");
+  const [regiaoSel, setRegiaoSel] = useState<RegiaoSelecionada | null>(null);
+
+  // Relatos de desconforto por astronauta ({ idAstronauta: { "vista:regiao": relato } }), salvos no navegador
+  const CHAVE_RELATOS = "astrohealth:relatos:v1";
+  const [relatos, setRelatos] = useState<Record<string, Record<string, RelatoDesconforto>>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(CHAVE_RELATOS) ?? "{}");
+    } catch {
+      return {};
+    }
+  });
+  const atualizarRelatos = (novo: Record<string, Record<string, RelatoDesconforto>>) => {
+    setRelatos(novo);
+    try {
+      localStorage.setItem(CHAVE_RELATOS, JSON.stringify(novo));
+    } catch {
+      /* navegador sem armazenamento: vale só nesta sessão */
+    }
+  };
   const [modalRegistro, setModalRegistro] = useState(false);
   const [modalSpinoff, setModalSpinoff] = useState(false);
   const [registrando, setRegistrando] = useState(false);
@@ -109,6 +130,8 @@ export function App() {
 
   const astronauta = astronautas.find((a) => a.id_astronauta === idAstronauta);
   const ultimoDia = astronauta?.ultimo_dia ?? 365;
+  const relatosAtuais = useMemo(() => relatos[idAstronauta] ?? {}, [relatos, idAstronauta]);
+  const listaRelatos = useMemo(() => Object.values(relatosAtuais), [relatosAtuais]);
 
   const carregarAstronautas = useCallback(async () => {
     try {
@@ -136,10 +159,10 @@ export function App() {
     listarAmbientes().then(setAmbientes).catch(() => undefined);
   }, [carregarAstronautas]);
 
-  const carregarAnalise = useCallback(async (ast: string, dia: number, forcarIa = false) => {
+  const carregarAnalise = useCallback(async (ast: string, dia: number, forcarIa = false, desconfortos: RelatoDesconforto[] = []) => {
     setCarregando(true);
     try {
-      setDados(await analisarDia(ast, dia, forcarIa));
+      setDados(await analisarDia(ast, dia, forcarIa, desconfortos));
       setBackendOnline(true);
       setErro(null);
     } catch (e) {
@@ -157,9 +180,10 @@ export function App() {
       pularProximaAnalise.current = false;
       return;
     }
-    const t = setTimeout(() => carregarAnalise(idAstronauta, diaMissao), 400);
+    // Os desconfortos relatados vão junto: a IA cruza sintomas subjetivos com os sinais vitais
+    const t = setTimeout(() => carregarAnalise(idAstronauta, diaMissao, false, listaRelatos), 400);
     return () => clearTimeout(t);
-  }, [idAstronauta, diaMissao, carregarAnalise]);
+  }, [idAstronauta, diaMissao, carregarAnalise, listaRelatos]);
 
   // ---------------- Wearable 24 h: relógio virtual, play/pause e picos simulados ----------------
   const [horaVirtual, setHoraVirtual] = useState(() => new Date().getHours());
@@ -172,6 +196,18 @@ export function App() {
 
   // Telemetria ao vivo: a cada 3 s busca a leitura da hora com microvariações (?ao_vivo=true)
   const [aoVivo, setAoVivo] = useState(false);
+
+  // Layout editável: posições e tamanhos dos quadros, salvos no navegador
+  const [editandoLayout, setEditandoLayout] = useState(false);
+  const [layoutGrade, setLayoutGrade] = useState<Layout[]>(carregarLayout);
+  const mudarLayout = (novo: Layout[]) => {
+    setLayoutGrade(novo);
+    salvarLayout(novo);
+  };
+  const restaurarLayout = () => {
+    limparLayoutSalvo();
+    setLayoutGrade(LAYOUT_PADRAO.map((l) => ({ ...l })));
+  };
   const [pulsoAoVivo, setPulsoAoVivo] = useState(0);
   useEffect(() => {
     if (!aoVivo) return;
@@ -265,7 +301,7 @@ export function App() {
   const codigo = triagem?.codigo_semaforo ?? 1;
   const ia = dados?.orientacao_ia;
   const tel = dados?.telemetria_dia;
-  const alertas = payload?.indicadores_em_alerta ?? {};
+  const alertas = useMemo(() => payload?.indicadores_em_alerta ?? {}, [payload]);
   const iaOnline = ia ? ia.fonte_analise === "grok_live" || ia.fonte_analise === "grok_cache" : false;
 
   // Mapa corporal combina a triagem do dia com o alerta da hora do wearable (ex.: pico simulado)
@@ -490,13 +526,60 @@ export function App() {
               </div>
             </div>
           </div>
+          {/* Coach de exercício (segue a hora do player do wearable) */}
+          {horaria?.coach_exercicio && <CoachCompacto className="mt-3" coach={horaria.coach_exercicio} />}
         </Painel>
 
+        {dados && (
+          <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+            {editandoLayout && (
+              <span className="mr-auto rounded border border-cyan-800/70 bg-cyan-950/50 px-2 py-1 font-mono text-[10px] text-cyan-200">
+                ✥ Modo de edição: arraste os quadros para mover e puxe as bordas para redimensionar. As posições são salvas automaticamente.
+              </span>
+            )}
+            {editandoLayout && (
+              <button
+                onClick={() => {
+                  // Copia as posições para colar no chat e virar o layout padrão do site
+                  const texto = JSON.stringify(layoutGrade.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })));
+                  navigator.clipboard
+                    ?.writeText(texto)
+                    .then(() => setAviso("Layout copiado. Cole no chat para ele virar o padrão do site."))
+                    .catch(() => setAviso(`Copie manualmente: ${texto}`));
+                }}
+                className="rounded border border-slate-600 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-slate-300 hover:bg-slate-800"
+              >
+                ⧉ Copiar layout
+              </button>
+            )}
+            {editandoLayout && (
+              <button
+                onClick={restaurarLayout}
+                className="rounded border border-slate-600 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-slate-300 hover:bg-slate-800"
+              >
+                ↺ Restaurar padrão
+              </button>
+            )}
+            <button
+              onClick={() => setEditandoLayout((v) => !v)}
+              aria-pressed={editandoLayout}
+              className={`rounded border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition ${
+                editandoLayout
+                  ? "border-green-500/70 bg-green-500/15 text-green-200"
+                  : "border-cyan-800 text-cyan-300 hover:bg-cyan-500/10"
+              }`}
+            >
+              {editandoLayout ? "✓ Concluir edição" : "✎ Editar layout"}
+            </button>
+          </div>
+        )}
+
         {dados && tel && payload && triagem && (
-          <main className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-            {/* ============ WEARABLE 24 H + COACH ============ */}
+          <GradeLayout editando={editandoLayout} layout={layoutGrade} onMudar={mudarLayout}>
+            {/* ============ WEARABLE 24 H ============ */}
+            <div key="wearable">
             <WearablePlayer
-              className="lg:col-span-8"
+              className="h-full overflow-auto"
               dados={horaria}
               hora={horaVirtual}
               tocando={tocando}
@@ -511,20 +594,33 @@ export function App() {
               }}
               onPico={simularPico}
             />
-            {horaria?.coach_exercicio ? (
-              <CoachPanel className="lg:col-span-4" coach={horaria.coach_exercicio} />
-            ) : (
-              <div className="lg:col-span-4" />
-            )}
-
+            </div>
             {/* ============ MAPA CORPORAL ============ */}
+            <div key="mapa">
             <Painel
               titulo="Mapa corporal"
               icone={<Satellite className="h-4 w-4" />}
-              className="lg:col-span-6"
+              className="h-full overflow-auto"
               extra={<span className="font-mono text-[10px] text-slate-500">{NOME_AMBIENTE[ambienteDia] ?? ambienteDia}</span>}
             >
-              <BodyMap motivos={motivosMapa} zonaSelecionada={zona} onSelectZona={setZona} />
+              {/* Personagem conforme o tripulante: sexo "F" usa o modelo feminino (ex.: Dra. Helena Vance) */}
+              <BodyMap
+                genero={astronauta?.sexo === "F" ? "F" : "M"}
+                motivos={motivosMapa}
+                relatos={relatosAtuais}
+                selecionada={regiaoSel}
+                onSelecionar={setRegiaoSel}
+                onSalvarRelato={(relato) => {
+                  const chave = `${relato.vista}:${relato.regiaoId}`;
+                  atualizarRelatos({ ...relatos, [idAstronauta]: { ...relatosAtuais, [chave]: relato } });
+                  setAviso(`Desconforto salvo: ${relato.nome} — ${relato.tipo} ${relato.intensidade}/5. A análise da IA foi atualizada.`);
+                }}
+                onRemoverRelato={(chave) => {
+                  const resto = { ...relatosAtuais };
+                  delete resto[chave];
+                  atualizarRelatos({ ...relatos, [idAstronauta]: resto });
+                }}
+              />
               <p className="mt-2 text-center font-mono text-[10px] text-slate-500">Categorias do dia: {triagem.categoria_risco}</p>
               {alertaHora && (
                 <p className={`mt-1 text-center font-mono text-[10px] ${alertaHora.semaforo_hora >= 3 ? "text-red-300" : "text-amber-300"}`}>
@@ -534,11 +630,14 @@ export function App() {
               )}
             </Painel>
 
-            {/* ============ SUPERIOR DIREITA: PROTOCOLO E CONTRAMEDIDAS ============ */}
+            </div>
+
+            {/* ============ PROTOCOLO E CONTRAMEDIDAS ============ */}
+            <div key="protocolo">
             <Painel
               titulo="Protocolo e contramedidas"
               icone={<Sparkles className="h-4 w-4" />}
-              className="flex flex-col lg:col-span-3"
+              className="flex h-full flex-col overflow-auto"
               extra={
                 <div className="flex items-center gap-1.5">
                   {ia && (
@@ -552,7 +651,7 @@ export function App() {
                     </span>
                   )}
                   <button
-                    onClick={() => diaMissao && carregarAnalise(idAstronauta, diaMissao, true)}
+                    onClick={() => diaMissao && carregarAnalise(idAstronauta, diaMissao, true, listaRelatos)}
                     disabled={carregando}
                     className="flex items-center gap-1 rounded border border-cyan-700 px-2 py-1 font-mono text-[10px] uppercase text-cyan-300 hover:bg-cyan-500/10 disabled:opacity-50"
                   >
@@ -621,30 +720,42 @@ export function App() {
                 )}
               </div>
             </Painel>
-            {/* ============ SUPERIOR, EXTREMA DIREITA: WIDGETS ============ */}
-            <div className="flex flex-col gap-3 lg:col-span-3">
+            </div>
+
+            {/* ============ WIDGETS (cada um é um quadro da grade) ============ */}
+            <div key="dispositivo" className="flex flex-col">
               <DispositivoWidget />
-              <RelogioWidget />
+            </div>
+            <div key="temperatura" className="flex flex-col">
               <TemperaturaExternaWidget ambiente={ambienteDia} dia={diaMissao} />
             </div>
 
             {/* ============ TENDÊNCIA PREDITIVA + EXAMES SUGERIDOS ============ */}
             {/* Protegido: um backend antigo (sem esses blocos) não derruba a tela */}
-            {dados.predicao_tendencia && <PredicaoPanel className="lg:col-span-6" predicao={dados.predicao_tendencia} />}
+            <div key="predicao">
+              {dados.predicao_tendencia && <PredicaoPanel className="h-full overflow-auto" predicao={dados.predicao_tendencia} />}
+            </div>
+            <div key="exames">
             <ExamesPanel
-              className="lg:col-span-6"
+              className="h-full overflow-auto"
               exames={(horaria?.dia_missao === diaMissao ? horaria.exames_sugeridos : dados.exames_sugeridos) ?? []}
             />
 
-            {/* ============ INFERIOR ESQUERDA: TENDÊNCIA 7 DIAS ============ */}
-            <Painel titulo="Tendência — últimos 7 dias" className="flex flex-col lg:col-span-6">
+            </div>
+
+            {/* ============ TENDÊNCIA 7 DIAS ============ */}
+            <div key="tendencia">
+            <Painel titulo="Tendência — últimos 7 dias" className="flex h-full flex-col overflow-auto">
               <TendenciaChart serie={dados.serie_7_dias} />
             </Painel>
 
-            {/* ============ INFERIOR DIREITA: TELEMETRIA (rolável) ============ */}
+            </div>
+
+            {/* ============ TELEMETRIA (rolável) ============ */}
+            <div key="telemetria">
             <Painel
               titulo="Telemetria vs. linha de base"
-              className="lg:col-span-6"
+              className="h-full overflow-auto"
               extra={
                 <span
                   className={`flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold ${corNivel.borda} ${corNivel.texto}`}
@@ -723,7 +834,8 @@ export function App() {
               </div>
             </Painel>
 
-          </main>
+            </div>
+          </GradeLayout>
         )}
       </div>
 

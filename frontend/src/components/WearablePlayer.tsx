@@ -92,7 +92,7 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
         </span>
       }
     >
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         {/* Controles do relógio virtual */}
         <div className="flex items-center gap-1.5">
           <button onClick={() => onHora(Math.max(0, hora - 1))} disabled={hora <= 0} className={botao} aria-label="Hora anterior">
@@ -123,7 +123,7 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
         </div>
 
         {/* Atividade atual da rotina */}
-        <div className="flex min-w-48 flex-1 items-center gap-2 rounded border border-slate-800 bg-slate-900/60 px-3 py-1.5">
+        <div className="flex min-w-48 flex-1 items-center gap-2 rounded border border-slate-800 bg-slate-900/60 px-3 py-1">
           <span className="text-xl" aria-hidden="true">{ponto ? ICONE_PERFIL[ponto.perfil] ?? "•" : "•"}</span>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-white">{ponto?.atividade ?? "—"}</p>
@@ -144,13 +144,13 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
       </div>
 
       {/* Linha do tempo de 24 h: cor = semáforo da hora */}
-      <div className="mt-3 grid gap-0.5" style={{ gridTemplateColumns: "repeat(24, minmax(0, 1fr))" }}>
+      <div className="mt-2 grid gap-0.5" style={{ gridTemplateColumns: "repeat(24, minmax(0, 1fr))" }}>
         {(dados?.pontos ?? Array.from({ length: 24 }, () => null)).map((p, h) => (
           <button
             key={h}
             onClick={() => onHora(h)}
             title={p ? `${p.rotulo} • ${p.atividade}${p.sem_sinal ? " • sem sinal" : ""}${p.pico_simulado ? " • pico simulado" : ""}` : ""}
-            className={`relative h-5 rounded-sm ${p ? corSemaforo(p.semaforo_hora, p.sem_sinal) : "bg-slate-800"} ${
+            className={`relative h-4 rounded-sm ${p ? corSemaforo(p.semaforo_hora, p.sem_sinal) : "bg-slate-800"} ${
               h === hora ? "ring-2 ring-cyan-300 ring-offset-1 ring-offset-[#070d18]" : "opacity-80 hover:opacity-100"
             }`}
             aria-label={`Ir para ${String(h).padStart(2, "0")}:00`}
@@ -159,7 +159,7 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
           </button>
         ))}
       </div>
-      <div className="mt-0.5 flex justify-between font-mono text-[9px] text-slate-600">
+      <div className="flex justify-between font-mono text-[9px] leading-tight text-slate-600">
         <span>00:00</span>
         <span>06:00</span>
         <span>12:00</span>
@@ -168,14 +168,14 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
       </div>
 
       {/* Sinais vitais do wearable na hora selecionada */}
-      <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+      <div className="mt-1.5 grid grid-cols-3 gap-2 sm:grid-cols-6">
         {SINAIS.map((s, i) => {
           const nivel = alertasPorSinal.get(s.chave as string) ?? 0;
           const esperado = ponto?.esperado?.[s.chave as string];
           return (
             <div
               key={s.chave as string}
-              className={`rounded border p-2 ${
+              className={`rounded border px-2 py-1 ${
                 nivel >= 3 ? "border-red-500/70 bg-red-500/10" : nivel === 2 ? "border-amber-500/70 bg-amber-500/10" : "border-slate-800 bg-slate-900/60"
               }`}
             >
@@ -196,7 +196,7 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
       {/* Alertas da hora (pico ou oscilação) */}
       {ponto && (ponto.alertas.length > 0 || ponto.sem_sinal) && (
         <div
-          className={`mt-3 rounded border p-2 text-xs ${
+          className={`mt-1.5 rounded border px-2 py-1 text-xs ${
             ponto.sem_sinal
               ? "border-slate-700 text-slate-400"
               : ponto.semaforo_hora >= 3
@@ -215,7 +215,6 @@ export function WearablePlayer({ dados, hora, tocando, carregando, onHora, onToc
           )}
         </div>
       )}
-      <p className="mt-2 font-mono text-[9px] text-slate-600">{dados?.nota}</p>
     </Painel>
   );
 }
