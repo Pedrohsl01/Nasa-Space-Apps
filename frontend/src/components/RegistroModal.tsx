@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { X } from "lucide-react";
+import { tAmbiente } from "../i18n";
 import type { Medicoes, TelemetriaDia } from "../types";
 
 interface RegistroModalProps {
@@ -7,7 +8,7 @@ interface RegistroModalProps {
   proximoDia: number;
   ambiente: string;
   nomeAstronauta: string;
-  referencia: TelemetriaDia | null; // usado para pré-preencher com a linha de base
+  referencia: TelemetriaDia | null; // used to pre-fill with the baseline
   enviando: boolean;
   erro: string | null;
   onFechar: () => void;
@@ -23,18 +24,18 @@ type Campo = {
 };
 
 const CAMPOS: Campo[] = [
-  { chave: "pa_sistolica", rotulo: "Pressão sistólica", unidade: "mmHg", passo: 1 },
-  { chave: "pa_diastolica", rotulo: "Pressão diastólica", unidade: "mmHg", passo: 1 },
-  { chave: "fc_repouso", rotulo: "FC em repouso", unidade: "bpm", passo: 1 },
-  { chave: "glicemia_mg_dl", rotulo: "Glicemia", unidade: "mg/dL", passo: 1 },
-  { chave: "temperatura_c", rotulo: "Temperatura", unidade: "°C", passo: 0.1 },
-  { chave: "sono_horas", rotulo: "Sono", unidade: "h", passo: 0.1 },
-  { chave: "humor", rotulo: "Humor (1 a 5)", unidade: "", passo: 1 },
-  { chave: "treino_resistido_min", rotulo: "Treino resistido", unidade: "min", passo: 1 },
+  { chave: "pa_sistolica", rotulo: "Systolic pressure", unidade: "mmHg", passo: 1 },
+  { chave: "pa_diastolica", rotulo: "Diastolic pressure", unidade: "mmHg", passo: 1 },
+  { chave: "fc_repouso", rotulo: "Resting HR", unidade: "bpm", passo: 1 },
+  { chave: "glicemia_mg_dl", rotulo: "Blood glucose", unidade: "mg/dL", passo: 1 },
+  { chave: "temperatura_c", rotulo: "Temperature", unidade: "°C", passo: 0.1 },
+  { chave: "sono_horas", rotulo: "Sleep", unidade: "h", passo: 0.1 },
+  { chave: "humor", rotulo: "Mood (1 to 5)", unidade: "", passo: 1 },
+  { chave: "treino_resistido_min", rotulo: "Resistance training", unidade: "min", passo: 1 },
 ];
 
 function valoresIniciais(ref: TelemetriaDia | null): Medicoes {
-  // Pré-preenche com a linha de base (base_*) do astronauta; o astronauta só ajusta o que mudou
+  // Pre-fills with the astronaut's baseline (base_*); the astronaut only adjusts what changed
   const b = (d: { base: number | null; valor: number } | undefined, padrao: number) =>
     d ? (d.base ?? d.valor) : padrao;
   return {
@@ -56,7 +57,7 @@ export function RegistroModal(props: RegistroModalProps) {
   const [form, setForm] = useState<Medicoes>(() => valoresIniciais(referencia));
   const [refUsada, setRefUsada] = useState<TelemetriaDia | null>(referencia);
 
-  // Reabre com a base do astronauta atual
+  // Reopens with the current astronaut's baseline
   if (referencia !== refUsada) {
     setRefUsada(referencia);
     setForm(valoresIniciais(referencia));
@@ -75,13 +76,13 @@ export function RegistroModal(props: RegistroModalProps) {
       <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg border border-(--borda) bg-(--card) backdrop-blur-md">
         <div className="flex items-center justify-between border-b border-cyan-900/60 px-5 py-3">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-400">Check-in diário</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-400">Daily check-in</p>
             <h2 className="text-lg font-semibold text-slate-100">
-              Registrar dia {proximoDia} • {nomeAstronauta}
+              Record day {proximoDia} • {nomeAstronauta}
             </h2>
-            <p className="text-xs text-slate-400">Ambiente: {ambiente} • valores pré-preenchidos com a sua linha de base</p>
+            <p className="text-xs text-slate-400">Environment: {tAmbiente(ambiente)} • values pre-filled with your baseline</p>
           </div>
-          <button onClick={onFechar} className="p-1 text-slate-400 hover:text-white" aria-label="Fechar">
+          <button onClick={onFechar} className="p-1 text-slate-400 hover:text-white" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -110,25 +111,25 @@ export function RegistroModal(props: RegistroModalProps) {
               </label>
             ))}
             <label className="col-span-2 flex flex-col gap-1 text-xs text-slate-400">
-              Sintoma neuro-ocular
+              Neuro-ocular symptom
               <select
                 value={form.sintoma_neuro_ocular}
                 onChange={(e) => mudar("sintoma_neuro_ocular", e.target.value)}
                 className="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-100 focus:border-cyan-500 focus:outline-none"
               >
-                <option value="Nenhum">Nenhum</option>
-                <option value="Leve pressao ocular">Leve pressão ocular</option>
-                <option value="Visao turva">Visão turva</option>
+                <option value="Nenhum">None</option>
+                <option value="Leve pressao ocular">Mild eye pressure</option>
+                <option value="Visao turva">Blurred vision</option>
               </select>
             </label>
             <label className="col-span-2 flex flex-col gap-1 text-xs text-slate-400">
               <span>
-                Dose de radiação do dia <span className="text-slate-600">(mSv, opcional)</span>
+                Daily radiation dose <span className="text-slate-600">(mSv, optional)</span>
               </span>
               <input
                 type="number"
                 step={0.01}
-                placeholder="média dos últimos 7 dias"
+                placeholder="average of the last 7 days"
                 value={form.radiacao_dia_msv ?? ""}
                 onChange={(e) => mudar("radiacao_dia_msv", e.target.value)}
                 className="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 font-mono text-sm text-slate-100 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none"
@@ -145,18 +146,18 @@ export function RegistroModal(props: RegistroModalProps) {
               disabled={enviando}
               className="rounded border border-slate-600 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
             >
-              Simular dia normal automaticamente
+              Simulate a normal day automatically
             </button>
             <div className="flex gap-2">
               <button type="button" onClick={onFechar} className="rounded px-3 py-2 text-xs text-slate-400 hover:text-white">
-                Cancelar
+                Cancel
               </button>
               <button
                 type="submit"
                 disabled={enviando}
                 className="rounded bg-cyan-500 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
               >
-                {enviando ? "Registrando..." : `Registrar dia ${proximoDia}`}
+                {enviando ? "Recording..." : `Record day ${proximoDia}`}
               </button>
             </div>
           </div>

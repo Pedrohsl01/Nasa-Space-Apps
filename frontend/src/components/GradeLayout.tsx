@@ -1,12 +1,12 @@
-// Grade dos painéis em CSS grid: cada quadro cresce com o conteúdo (sem rolagem interna).
-// As posições ficam em .grade-painel (index.css), pela área de cada quadro.
+// Panel grid in CSS grid: each frame grows with its content (no inner scrolling).
+// Positions live in .grade-painel (index.css), by each frame's area.
 import { Children, cloneElement, isValidElement, type ReactElement } from "react";
 
-// Chave do quadro (key do filho) -> área da grade
+// Frame key (child key) -> grid area
 const AREA: Record<string, string> = {
   wearable: "w",
   mapa: "m",
-  missoes: "mi", // Missões do dia, logo abaixo do mapa corporal
+  missoes: "mi", // Daily missions, right below the body map
   protocolo: "p",
   temperatura: "t",
   dispositivo: "d",
@@ -16,7 +16,7 @@ const AREA: Record<string, string> = {
   telemetria: "tl",
 };
 
-// mapaLargo: o mapa tem cartões de alerta/desconforto e pode crescer até 20% (só em tela ≥ 1500 px, ver index.css)
+// mapaLargo: the map has alert/discomfort cards and may grow up to 20% (only on screens ≥ 1500 px, see index.css)
 export function GradeLayout({ children, mapaLargo = false }: { children: React.ReactNode; mapaLargo?: boolean }) {
   return (
     <div className={`grade-painel grid gap-4 ${mapaLargo ? "mapa-largo" : ""}`}>

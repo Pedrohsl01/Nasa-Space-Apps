@@ -4,51 +4,52 @@
 ![Status](https://img.shields.io/badge/Status-In%20Development-success?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
 
-Sistema de monitoramento autônomo e suporte à decisão clínica desenvolvido pela equipe **NERV Systems** para o **2026 NASA Space Apps Challenge** (*Create Health Monitoring Software for Astronauts on Space Missions*).
+Autonomous monitoring and clinical decision support system developed by the **NERV Systems** team for the **2026 NASA Space Apps Challenge** (*Create Health Monitoring Software for Astronauts on Space Missions*).
 
 ---
 
-## 📋 Sobre o Projeto
+## 📋 About the Project
 
-Em missões espaciais de longa duração — como o programa Artemis, operações em bases lunares e futuras viagens a Marte —, o atraso nas comunicações com a Terra exige que os astronautas tenham autonomia para avaliar, prevenir e tratar alterações fisiológicas e comportamentais a bordo.
+On long-duration space missions — such as the Artemis program, lunar base operations and future trips to Mars — the communication delay with Earth requires astronauts to have the autonomy to assess, prevent and treat physiological and behavioral changes on board.
 
-O sistema da **NERV Systems** funciona como um assistente visual e analítico de saúde espacial que coleta indicadores biométricos, cruza dados com os protocolos do **Human Research Program (HRP) da NASA** e orienta a tripulação por meio de alertas intuitivos e planos de ação preventivos.
-
----
-
-## 🧬 Fundamentação Científica (NASA HRP & CSA)
-
-A arquitetura de monitoramento foi projetada para mitigar os **Cinco Riscos do Voo Espacial Humano** mapeados pela NASA:
-
-1. **Radiação Espacial:** Acompanhamento de exposição cumulativa e riscos associados, inspirado nas pesquisas da **Agência Espacial Canadense (CSA)** e da NASA.
-2. **Isolamento e Confinamento:** Monitoramento de humor, qualidade do sono e desempenho comportamental da tripulação.
-3. **Distância da Terra:** Diagnóstico assistido offline com instruções simplificadas para autoexame sem dependência imediata de médicos em solo.
-4. **Campos Gravitacionais Alterados:** Avaliação de adaptação cardiovascular, perda de densidade óssea, equilíbrio sensório-motor e Síndrome Neuro-ocular Associada ao Voo Espacial (SANS).
-5. **Ambientes Fechados e Hostis:** Correlação entre condições ambientais da cabine/habitat e respostas imunológicas ou respiratórias.
-
-### Indicadores Monitorados
-* **Sinais Vitais & Metabólicos:** Pressão arterial, frequência cardíaca, temperatura corporal e glicemia (`mg/dL`).
-* **Saúde Comportamental & Rotina:** Horas diárias de sono, fadiga cognitiva e registros de humor.
-* **Exames Complementares & Ambiente:** Suporte à análise de imagens médicas (como ultrassonografia a bordo) e níveis de exposição à radiação.
+The **NERV Systems** system works as a visual and analytical space health assistant that collects biometric indicators, cross-checks the data with the protocols of **NASA's Human Research Program (HRP)** and guides the crew through intuitive alerts and preventive action plans.
 
 ---
 
-## ✨ Funcionalidades Principais
+## 🧬 Scientific Foundation (NASA HRP & CSA)
 
-* **🩺 Painel Visual & Mapeamento Corporal Interativo:** Interface gráfica que permite inspecionar sistemas do corpo humano, visualizar funções fisiológicas e identificar rapidamente áreas sob risco.
-* **🚦 Código de Cores e Triagem Inteligente:** Classificação imediata dos indicadores em níveis de status (*Normal*, *Atenção* e *Crítico*) para leitura rápida em situações de alta carga cognitiva.
-* **📈 Análise Temporal e Gráficos Dinâmicos:** Acompanhamento da evolução histórica dos biomarcadores ao longo da missão para detecção precoce de tendências.
-* **📖 Guias de Autoavaliação e Contramedidas:** Instruções passo a passo sobre como realizar medições a bordo, por que cada exame é necessário e quais ações preventivas adotar.
-* **🚀 Adaptação Multi-Ambiente & Engajamento:** Perfis configuráveis para espaçonaves em trânsito, estações orbitais, rovers ou bases planetárias, com lembretes de rotina e gamificação para adesão aos protocolos de saúde.
+The monitoring architecture was designed to mitigate the **Five Hazards of Human Spaceflight** mapped by NASA:
+
+1. **Space Radiation:** Tracking of cumulative exposure and associated risks, inspired by research from the **Canadian Space Agency (CSA)** and NASA.
+2. **Isolation and Confinement:** Monitoring of the crew's mood, sleep quality and behavioral performance.
+3. **Distance from Earth:** Offline assisted diagnosis with simplified self-examination instructions, with no immediate dependence on doctors on the ground.
+4. **Altered Gravity Fields:** Assessment of cardiovascular adaptation, bone density loss, sensorimotor balance and Spaceflight Associated Neuro-ocular Syndrome (SANS).
+5. **Hostile Closed Environments:** Correlation between cabin/habitat environmental conditions and immune or respiratory responses.
+
+### Monitored Indicators
+* **Vital & Metabolic Signs:** Blood pressure, heart rate, body temperature and blood glucose (`mg/dL`).
+* **Behavioral Health & Routine:** Daily sleep hours, cognitive fatigue and mood records.
+* **Complementary Exams & Environment:** Support for the analysis of medical images (such as onboard ultrasound) and radiation exposure levels.
 
 ---
 
-## 📂 Estrutura do Repositório
+## ✨ Main Features
+
+* **🩺 Visual Dashboard & Interactive Body Map:** A graphical interface that lets you inspect human body systems, view physiological functions and quickly identify areas at risk.
+* **🚦 Color Code and Smart Triage:** Immediate classification of the indicators into status levels (*Normal*, *Warning* and *Critical*) for quick reading in high cognitive load situations.
+* **📈 Time Analysis and Dynamic Charts:** Tracking of the historical evolution of biomarkers throughout the mission for early trend detection.
+* **📖 Self-Assessment Guides and Countermeasures:** Step-by-step instructions on how to take measurements on board, why each exam is needed and which preventive actions to take.
+* **🚀 Multi-Environment Adaptation & Engagement:** Configurable profiles for spacecraft in transit, orbital stations, rovers or planetary bases, with routine reminders and gamification to encourage adherence to health protocols.
+
+---
+
+## 📂 Repository Structure
 
 ```text
 ├── assets/
-│   └── style.css          # Estilização e identidade visual da interface
+│   └── style.css          # Styling and visual identity of the interface
 ├── notebooks/
-│   └── EDA.ipynb          # Análise Exploratória de Dados (EDA) e validação dos indicadores de saúde
-├── src/                   # Código-fonte da aplicação e lógica de monitoramento
-└── README.md              # Documentação do projeto
+│   └── EDA.ipynb          # Exploratory Data Analysis (EDA) and validation of the health indicators
+├── src/                   # Application source code and monitoring logic
+└── README.md              # Project documentation
+```

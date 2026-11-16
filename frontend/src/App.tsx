@@ -29,6 +29,7 @@ import { LogoApp } from "./components/LogoApp";
 import { AlertaCriticoPopup } from "./components/AlertaCriticoPopup";
 import { RelatoEnviadoPopup } from "./components/RelatoEnviadoPopup";
 import { DecisaoDia, type EvidenciaAlerta } from "./components/DecisaoDia";
+import { tCategorias, tStatus } from "./i18n";
 import {
   ESTADO_VAZIO,
   XP_CONTRAMEDIDA,
@@ -60,13 +61,16 @@ import type {
 } from "./types";
 
 
+// Dataset value -> text shown on screen
+const SINTOMA_EN: Record<string, string> = { Nenhum: "None", "Leve pressao ocular": "Mild eye pressure", "Visao turva": "Blurred vision" };
+
 const NOME_PARTE: Record<string, string> = {
-  cabeca: "Cabeça",
-  peito: "Peito",
-  pulmao: "Pulmões",
-  coluna: "Coluna",
-  pernas: "Pernas",
-  pele: "Pele",
+  cabeca: "Head",
+  peito: "Chest",
+  pulmao: "Lungs",
+  coluna: "Spine",
+  pernas: "Legs",
+  pele: "Skin",
 };
 
 const TEMA_AMBIENTE: Record<string, "mars" | "transit" | "station"> = {
@@ -75,7 +79,7 @@ const TEMA_AMBIENTE: Record<string, "mars" | "transit" | "station"> = {
   "Estacao Orbital": "station",
 };
 
-// Vídeo de fundo por cenário (o dia selecionado define o local; sem dado ainda, fica a Base Marciana)
+// Background video per scenario (the selected day sets the location; with no data yet, it stays on Mars Base)
 const VIDEO_AMBIENTE: Record<string, string> = {
   "Base Marciana": "/video/video_marte.mp4",
   "Transito para Marte": "/video/video_transito_marte.mp4",
@@ -83,28 +87,28 @@ const VIDEO_AMBIENTE: Record<string, string> = {
 };
 
 const NOME_CENARIO: Record<string, string> = {
-  sono_isolamento: "sono baixo e humor em queda (isolamento)",
-  sans_neuro_ocular: "sintoma neuro-ocular (SANS)",
-  febre_infeccao: "febre e FC alta (possível infecção)",
-  hipertensao: "pressão arterial elevada",
-  sedentarismo: "treino resistido muito abaixo da meta",
-  tempestade_solar: "pico de radiação (tempestade solar)",
+  sono_isolamento: "low sleep and declining mood (isolation)",
+  sans_neuro_ocular: "neuro-ocular symptom (SANS)",
+  febre_infeccao: "fever and high HR (possible infection)",
+  hipertensao: "high blood pressure",
+  sedentarismo: "resistance training far below goal",
+  tempestade_solar: "radiation spike (solar storm)",
 };
 
-// Cada card de telemetria e a chave correspondente em indicadores_em_alerta (regras em risk_engine.py)
+// Each telemetry card and its matching key in indicadores_em_alerta (rules in risk_engine.py)
 const CARDS: { chave: keyof Analise["telemetria_dia"]; rotulo: string; unidade: string; alerta: string }[] = [
-  { chave: "pa_sistolica", rotulo: "PA sistólica", unidade: "mmHg", alerta: "pressao_arterial" },
-  { chave: "pa_diastolica", rotulo: "PA diastólica", unidade: "mmHg", alerta: "pressao_arterial" },
-  { chave: "fc_repouso", rotulo: "FC repouso", unidade: "bpm", alerta: "fc_repouso" },
-  { chave: "glicemia_mg_dl", rotulo: "Glicemia", unidade: "mg/dL", alerta: "glicemia_mg_dl" },
-  { chave: "temperatura_c", rotulo: "Temperatura", unidade: "°C", alerta: "temperatura_c" },
-  { chave: "sono_horas", rotulo: "Sono", unidade: "h", alerta: "sono_horas" },
-  { chave: "treino_resistido_min", rotulo: "Treino resistido", unidade: "min", alerta: "treino_resistido_min" },
-  { chave: "humor", rotulo: "Humor", unidade: "/5", alerta: "humor" },
-  { chave: "radiacao_acumulada_msv", rotulo: "Radiação acumulada", unidade: "mSv", alerta: "radiacao_acumulada_msv" },
+  { chave: "pa_sistolica", rotulo: "Systolic BP", unidade: "mmHg", alerta: "pressao_arterial" },
+  { chave: "pa_diastolica", rotulo: "Diastolic BP", unidade: "mmHg", alerta: "pressao_arterial" },
+  { chave: "fc_repouso", rotulo: "Resting HR", unidade: "bpm", alerta: "fc_repouso" },
+  { chave: "glicemia_mg_dl", rotulo: "Blood glucose", unidade: "mg/dL", alerta: "glicemia_mg_dl" },
+  { chave: "temperatura_c", rotulo: "Temperature", unidade: "°C", alerta: "temperatura_c" },
+  { chave: "sono_horas", rotulo: "Sleep", unidade: "h", alerta: "sono_horas" },
+  { chave: "treino_resistido_min", rotulo: "Resistance training", unidade: "min", alerta: "treino_resistido_min" },
+  { chave: "humor", rotulo: "Mood", unidade: "/5", alerta: "humor" },
+  { chave: "radiacao_acumulada_msv", rotulo: "Accumulated radiation", unidade: "mSv", alerta: "radiacao_acumulada_msv" },
 ];
 
-const ALTURA_CARD = 92; // px — a grade mostra 2 linhas e meia de cards; o resto aparece rolando
+const ALTURA_CARD = 92; // px: the grid shows two and a half rows of cards; the rest appears on scroll
 
 function formatarDesvio(d: Desvio) {
   if (d.desvio === null || d.base === null) return null;
@@ -113,7 +117,7 @@ function formatarDesvio(d: Desvio) {
   return `${sinal}${d.desvio.toFixed(casas)} (${sinal}${d.desvio_pct?.toFixed(0)}%)`;
 }
 
-// Botão do header: borda fina e brilho suave, mesmo visual para os quatro
+// Header button: thin border and soft glow, same look for all of them
 function BotaoTopo({ children, onClick, disabled, cor, icone }: {
   children: React.ReactNode;
   onClick: () => void;
@@ -137,13 +141,13 @@ function BotaoTopo({ children, onClick, disabled, cor, icone }: {
   );
 }
 
-/** Resumo, no aviso, do dia simulado para o resto da tripulação (sem pop-up: só o tripulante selecionado abre pop-up). */
+/** Summary, in the notice, of the day simulated for the rest of the crew (no pop-up: only the selected crew member opens a pop-up). */
 function textoTripulacao(lista?: TripulanteRegistrado[] | null) {
   if (!lista?.length) return "";
   const itens = lista.map((t) =>
-    t.erro ? `${t.nome}: falhou (${t.erro})` : `${t.nome}: dia ${t.dia_registrado}${t.cenario_simulado ? " com anomalia" : ""} (nível ${t.codigo_semaforo})`,
+    t.erro ? `${t.nome}: failed (${t.erro})` : `${t.nome}: day ${t.dia_registrado}${t.cenario_simulado ? " with anomaly" : ""} (level ${t.codigo_semaforo})`,
   );
-  return ` • Também simulado: ${itens.join("; ")}`;
+  return ` • Also simulated: ${itens.join("; ")}`;
 }
 
 export function App() {
@@ -155,13 +159,13 @@ export function App() {
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  // Pop-up "dor enviada para a equipe médica" logo depois de salvar um relato
+  // "Report sent to the medical team" pop-up right after saving a report
   const [relatoEnviado, setRelatoEnviado] = useState<RelatoDesconforto | null>(null);
   const fecharRelatoEnviado = useCallback(() => setRelatoEnviado(null), []);
   const [regiaoSel, setRegiaoSel] = useState<RegiaoSelecionada | null>(null);
 
-  // Relatos de desconforto por tripulante e dia ({ "AST-01|360": { "vista:regiao": relato } }), salvos no navegador
-  const CHAVE_RELATOS = "astrohealth:relatos:v2"; // v2: relatos por tripulante E por dia
+  // Discomfort reports per crew member and day ({ "AST-01|360": { "vista:regiao": relato } }), saved in the browser
+  const CHAVE_RELATOS = "astrohealth:relatos:v2"; // v2: reports per crew member AND per day
   const [relatos, setRelatos] = useState<Record<string, Record<string, RelatoDesconforto>>>(() => {
     try {
       return JSON.parse(localStorage.getItem(CHAVE_RELATOS) ?? "{}");
@@ -174,10 +178,10 @@ export function App() {
     try {
       localStorage.setItem(CHAVE_RELATOS, JSON.stringify(novo));
     } catch {
-      /* navegador sem armazenamento: vale só nesta sessão */
+      /* browser without storage: valid for this session only */
     }
   };
-  // HUD gamificado por tripulante: histórico do chat, protocolos aplicados e XP (salvos no navegador)
+  // Gamified HUD per crew member: chat history, applied protocols and XP (saved in the browser)
   const [hud, setHud] = useState<Record<string, EstadoTripulante>>(carregarHud);
   const mudarHud = (id: string, f: (e: EstadoTripulante) => EstadoTripulante) =>
     setHud((atual) => {
@@ -193,15 +197,15 @@ export function App() {
   }, [ganho]);
   const [modalSpinoff, setModalSpinoff] = useState(false);
   const [registrando, setRegistrando] = useState(false);
-  // Evita uma segunda chamada logo depois de registrar (a resposta do registro já traz a análise)
+  // Avoids a second call right after recording (the record response already carries the analysis)
   const pularProximaAnalise = useRef(false);
 
   const astronauta = astronautas.find((a) => a.id_astronauta === idAstronauta);
   const ultimoDia = astronauta?.ultimo_dia ?? 365;
-  // Cada dia tem seus próprios relatos: trocar de dia esconde a dor; voltar ao dia mostra de novo
+  // Each day has its own reports: switching days hides the pain; going back to the day shows it again
   const chaveRelatos = `${idAstronauta}|${diaMissao}`;
   const relatosAtuais = useMemo(() => relatos[chaveRelatos] ?? {}, [relatos, chaveRelatos]);
-  // Trocar de dia ou de tripulante fecha o registro de desconforto aberto
+  // Switching day or crew member closes the open discomfort report
   useEffect(() => setRegiaoSel(null), [chaveRelatos]);
   const listaRelatos = useMemo(() => Object.values(relatosAtuais), [relatosAtuais]);
 
@@ -213,12 +217,12 @@ export function App() {
       return lista;
     } catch {
       setBackendOnline(false);
-      setErro(`Motor de triagem fora do ar (${API_URL}). Inicie o backend (uvicorn).`);
+      setErro(`Triage engine is offline (${API_URL}). Start the backend (uvicorn).`);
       return [];
     }
   }, []);
 
-  // Inicialização: tripulação e último dia registrado
+  // Startup: crew and last recorded day
   useEffect(() => {
     carregarAstronautas().then((lista) => {
       const primeiro = lista.find((a) => a.id_astronauta === "AST-01") ?? lista[0];
@@ -249,30 +253,30 @@ export function App() {
     [],
   );
 
-  // Espera 400 ms sem mudança de dia antes de analisar (cada análise de alerta pode gastar 1 requisição da Groq)
+  // Waits 400 ms without a day change before analyzing (each alert analysis may spend 1 Groq request)
   useEffect(() => {
     if (diaMissao === null) return;
     if (pularProximaAnalise.current) {
       pularProximaAnalise.current = false;
       return;
     }
-    // Os desconfortos relatados vão junto: a IA cruza sintomas subjetivos com os sinais vitais
+    // The reported discomforts go along: the AI cross-checks subjective symptoms with the vital signs
     const t = setTimeout(() => carregarAnalise(idAstronauta, diaMissao, false, listaRelatos), 400);
     return () => clearTimeout(t);
   }, [idAstronauta, diaMissao, carregarAnalise, listaRelatos]);
 
-  // ---------------- Wearable ao vivo: uma leitura por hora, como um smartwatch ----------------
+  // ---------------- Live wearable: one reading per hour, like a smartwatch ----------------
   const [tocando, setTocando] = useState(false);
   const [velocidade, setVelocidade] = useState<1 | 2 | 5>(1);
   const [horaria, setHoraria] = useState<TelemetriaHoraria | null>(null);
   const [coletando, setColetando] = useState(false);
   const [erroSync, setErroSync] = useState(false);
-  // Pop-up de alerta crítico só no momento de uma ALTERAÇÃO (leitura nova do wearable ou dia registrado),
-  // nunca ao navegar entre dias ou tripulantes. Até esse instante (ms) um alerta novo pode abrir o pop-up.
+  // Critical alert pop-up only at the moment of a CHANGE (new wearable reading or recorded day),
+  // never when browsing between days or crew members. Until this instant (ms) a new alert may open the pop-up.
   const liberarAlertaAte = useRef(0);
   const JANELA_ALERTA_MS = 8000;
 
-  // Avisos somem sozinhos depois de alguns segundos
+  // Notices disappear on their own after a few seconds
   useEffect(() => {
     if (!aviso) return;
     const t = setTimeout(() => setAviso(null), 7000);
@@ -280,40 +284,40 @@ export function App() {
   }, [aviso]);
 
   const trocarAstronauta = (id: string) => {
-    liberarAlertaAte.current = 0; // navegação não dispara pop-up
+    liberarAlertaAte.current = 0; // navigation does not trigger the pop-up
     const a = astronautas.find((x) => x.id_astronauta === id);
     setIdAstronauta(id);
-    setRegiaoSel(null); // a região selecionada era do tripulante anterior
+    setRegiaoSel(null); // the selected region belonged to the previous crew member
     if (a) setDiaMissao(a.ultimo_dia);
   };
 
   const mudarDia = (delta: number) => {
     if (diaMissao === null) return;
-    liberarAlertaAte.current = 0; // navegação não dispara pop-up
+    liberarAlertaAte.current = 0; // navigation does not trigger the pop-up
     setDiaMissao(Math.min(ultimoDia, Math.max(1, diaMissao + delta)));
   };
 
 
-  // Simula o dia seguinte (para toda a tripulação) e ABRE o dia simulado, completo, com a simulação dele
+  // Simulates the next day (for the whole crew) and OPENS the simulated day, complete, with its simulation
   const executarRegistro = async (opcoes: { simular_anomalia?: boolean }): Promise<boolean> => {
     setRegistrando(true);
-    setTocando(false); // o play não deve sair do dia simulado para abrir outro
+    setTocando(false); // play must not leave the simulated day to open another one
     try {
       const resp = await registrarDia({ id_astronauta: idAstronauta, ...opcoes });
       pularProximaAnalise.current = true;
-      liberarAlertaAte.current = Date.now() + JANELA_ALERTA_MS; // dia novo registrado: alerta dele pode abrir o pop-up
+      liberarAlertaAte.current = Date.now() + JANELA_ALERTA_MS; // new day recorded: its alert may open the pop-up
       setDados(resp);
       setDiaMissao(resp.dia_registrado ?? null);
       await carregarAstronautas();
       const triagemNova = resp.payload_compacto.triagem_python;
       const origem =
         resp.origem === "manual"
-          ? "registrado manualmente"
+          ? "recorded manually"
           : resp.cenario_simulado
-            ? `simulado com anomalia: ${NOME_CENARIO[resp.cenario_simulado] ?? resp.cenario_simulado}`
-            : "simulado (dia normal)";
+            ? `simulated with anomaly: ${NOME_CENARIO[resp.cenario_simulado] ?? resp.cenario_simulado}`
+            : "simulated (normal day)";
       setAviso(
-        `Dia ${resp.dia_registrado} ${origem} e salvo na base • Nível ${triagemNova.codigo_semaforo} (${triagemNova.categoria_risco})${textoTripulacao(resp.tripulacao_registrada)}`,
+        `Day ${resp.dia_registrado} ${origem} and saved to the dataset • Level ${triagemNova.codigo_semaforo} (${tCategorias(triagemNova.categoria_risco)})${textoTripulacao(resp.tripulacao_registrada)}`,
       );
       return true;
     } catch (e) {
@@ -332,10 +336,10 @@ export function App() {
   const alertas = useMemo(() => payload?.indicadores_em_alerta ?? {}, [payload]);
   const iaOnline = ia ? ia.fonte_analise === "groq_live" || ia.fonte_analise === "groq_cache" : false;
 
-  // Mapa corporal combina a triagem do dia com o alerta da hora do wearable (ex.: pico simulado)
+  // The body map combines the day's triage with the wearable's hourly alert (e.g. simulated spike)
   const pontoHora = horaria?.dia_missao === diaMissao ? horaria.ponto_atual : null;
   const alertaHora = pontoHora && pontoHora.semaforo_hora > 1 ? pontoHora : null;
-  // Motivo de cada parte em alerta (ex.: peito -> "Pressão muito alta"), para os cartões ao lado do corpo
+  // Reason for each part in alert (e.g. chest -> "Very high blood pressure"), for the cards beside the body
   const motivosMapa = useMemo(
     () =>
       motivosPorZona(
@@ -348,14 +352,14 @@ export function App() {
     [alertas, triagem, codigo, alertaHora],
   );
 
-  // Alerta crítico de saúde: 1 órgão vermelho ou 2+ órgãos laranja no mapa corporal.
-  // Cada combinação (tripulante, dia, órgãos e níveis) aparece uma vez; depois de "Ciente" só volta se o quadro mudar.
+  // Critical health alert: 1 red organ or 2+ orange organs on the body map.
+  // Each combination (crew member, day, organs and levels) shows once; after "Acknowledge" it only comes back if the picture changes.
   const orgaosAlerta = useMemo(() => orgaosEmAlerta(motivosMapa), [motivosMapa]);
   const assinaturaAlerta = exigeAlertaCritico(orgaosAlerta)
     ? `${idAstronauta}|${diaMissao}|${orgaosAlerta.map((o) => `${o.zona}:${o.nivel}`).join(",")}`
     : null;
-  // Quadro crítico NOVO: abre o pop-up só se veio de uma alteração (leitura nova ou dia registrado);
-  // se apareceu por navegação, fica só no mapa e conta como já visto.
+  // NEW critical picture: opens the pop-up only if it came from a change (new reading or recorded day);
+  // if it showed up through navigation, it stays on the map only and counts as already seen.
   const [alertasVistos, setAlertasVistos] = useState<Set<string>>(() => new Set());
   const [alertaAberto, setAlertaAberto] = useState<string | null>(null);
   useEffect(() => {
@@ -366,14 +370,14 @@ export function App() {
   const mostrarAlertaCritico = alertaAberto !== null && alertaAberto === assinaturaAlerta;
   const fecharAlertaCritico = useCallback(() => setAlertaAberto(null), []);
 
-  // Gamificação: metas diárias simples e transparentes (metas do projeto, não clínicas)
+  // Gamification: simple, transparent daily goals (project goals, not clinical)
   const missoes = useMemo(() => {
     if (!tel) return [];
     return [
-      { nome: "Sono reparador", ok: tel.sono_horas.valor >= (tel.sono_horas.base ?? 7) - 0.5, dica: "≥ base − 0,5 h" },
-      { nome: "Treino resistido", ok: tel.treino_resistido_min.valor >= META_TREINO, dica: `≥ ${META_TREINO} min` },
-      { nome: "Humor positivo", ok: tel.humor.valor >= 4, dica: "≥ 4 de 5" },
-      { nome: "Sinais na linha de base", ok: codigo === 1, dica: "semáforo verde" },
+      { nome: "Restful sleep", ok: tel.sono_horas.valor >= (tel.sono_horas.base ?? 7) - 0.5, dica: "≥ baseline − 0.5 h" },
+      { nome: "Resistance training", ok: tel.treino_resistido_min.valor >= META_TREINO, dica: `≥ ${META_TREINO} min` },
+      { nome: "Positive mood", ok: tel.humor.valor >= 4, dica: "≥ 4 out of 5" },
+      { nome: "Vitals at baseline", ok: codigo === 1, dica: "green status" },
     ];
   }, [tel, codigo]);
   const xp = missoes.filter((m) => m.ok).length * 25;
@@ -388,24 +392,24 @@ export function App() {
   const ambienteDia = payload?.contexto_missao.ambiente ?? "";
   const videoFundo = VIDEO_AMBIENTE[ambienteDia] ?? VIDEO_AMBIENTE["Base Marciana"];
   const atrasoSinal =
-    ambienteDia === "Estacao Orbital" ? "Comunicação com a Terra quase em tempo real" : "Atraso de sinal com a Terra de até ~20 min por trecho";
+    ambienteDia === "Estacao Orbital" ? "Near real-time communication with Earth" : "Signal delay with Earth of up to ~20 min each way";
 
-  // ---------------- HUD: prontidão, chat de contramedidas e sinais resumidos ----------------
+  // ---------------- HUD: readiness, countermeasures chat and summarized vitals ----------------
   const estadoHud = hud[idAstronauta] ?? ESTADO_VAZIO;
   const chaveDiaHud = String(diaMissao ?? 0);
-  // Assinatura estável (string) para os hooks não recalcularem a cada render
+  // Stable signature (string) so the hooks do not recompute on every render
   const assinaturaAplicadas = JSON.stringify(estadoHud.aplicadas[chaveDiaHud] ?? []);
   const aplicadasDia = useMemo(() => JSON.parse(assinaturaAplicadas) as string[], [assinaturaAplicadas]);
   const contramedidas = useMemo(() => contramedidasDoDia(aplicadasDia), [aplicadasDia]);
 
-  // Relógio = hora da última leitura coletada do dia ao vivo
+  // Clock = hour of the last reading collected on the live day
   const aoVivoDoDia = horaria?.id_astronauta === idAstronauta && horaria?.dia_missao === diaMissao ? horaria : null;
   const horaAtual = aoVivoDoDia?.hora ?? 0;
-  // Prontidão / Aptidão EVA CUMULATIVA: o backend roda um passo do integrador a cada leitura nova
+  // CUMULATIVE Readiness / EVA Fitness: the backend runs one integrator step per new reading
   const prontidao: ProntidaoCumulativa | null = aoVivoDoDia?.prontidao ?? null;
   const ganhoPendente = useRef<{ antes: number; xp: number } | null>(null);
 
-  // Eventos do dia (mapa corporal e contramedidas) vão em toda chamada ao vivo: valem a partir da hora em que ocorreram
+  // The day's events (body map and countermeasures) go in every live call: they count from the hour they happened
   const eventosRef = useRef<EventosAoVivo | null>(null);
   eventosRef.current =
     diaMissao === null
@@ -413,10 +417,10 @@ export function App() {
       : { id_astronauta: idAstronauta, dia_missao: diaMissao, desconfortos: listaRelatos, contramedidas, horaPadrao: horaAtual };
   const horariaRef = useRef<TelemetriaHoraria | null>(null);
   horariaRef.current = horaria;
-  // Chamadas ao vivo em fila (uma por vez): um tick nunca atropela o outro
+  // Live calls in a queue (one at a time): a tick never runs over another
   const filaAoVivo = useRef<Promise<unknown>>(Promise.resolve());
   const chamarAoVivo = useCallback(
-    // alteracao=true: a chamada gera uma leitura nova (tick/pico/virada) e pode abrir o pop-up de alerta
+    // alteracao=true: the call generates a new reading (tick/spike/rollover) and may open the alert pop-up
     (pedido: (e: EventosAoVivo) => Promise<TelemetriaHoraria>, alteracao = false) => {
       filaAoVivo.current = filaAoVivo.current.then(async () => {
         const ev = eventosRef.current;
@@ -428,11 +432,11 @@ export function App() {
           setHoraria(r);
           setErroSync(false);
           if (r.virada) {
-            // Depois das 23:00 o backend abre o dia seguinte às 00:00 (e grava um dia simulado se ele não existia)
+            // After 23:00 the backend opens the next day at 00:00 (and saves a simulated day if it did not exist)
             setDiaMissao(r.dia_missao);
             if (r.virada.registrado) {
               carregarAstronautas();
-              setAviso(`Dia ${r.virada.para} simulado (dia normal) e salvo na base${textoTripulacao(r.virada.tripulacao)}`);
+              setAviso(`Day ${r.virada.para} simulated (normal day) and saved to the dataset${textoTripulacao(r.virada.tripulacao)}`);
             }
           }
         } catch (e) {
@@ -448,7 +452,7 @@ export function App() {
     [carregarAstronautas],
   );
 
-  // Trocar de tripulante/dia: retoma a sessão ao vivo desse dia ou começa às 00:00 com uma leitura
+  // Switching crew member/day: resumes that day's live session or starts at 00:00 with one reading
   useEffect(() => {
     if (diaMissao === null) return;
     const h = horariaRef.current;
@@ -456,7 +460,7 @@ export function App() {
     chamarAoVivo(estadoAoVivo);
   }, [idAstronauta, diaMissao, chamarAoVivo]);
 
-  // Relato no mapa ou contramedida aplicada: recalcula a prontidão na hora atual (sem gerar leitura)
+  // Report on the map or countermeasure applied: recomputes readiness at the current hour (without generating a reading)
   const assinaturaEventos = JSON.stringify([listaRelatos, contramedidas]);
   const eventosSincronizados = useRef(assinaturaEventos);
   useEffect(() => {
@@ -468,9 +472,9 @@ export function App() {
     return () => clearTimeout(t);
   }, [assinaturaEventos, idAstronauta, diaMissao, chamarAoVivo]);
 
-  // Play: coleta 1 hora a cada 5 s (1x), 2,5 s (2x) ou 1 s (5x) até o operador pausar; vira o dia sozinho
+  // Play: collects 1 hour every 5 s (1x), 2.5 s (2x) or 1 s (5x) until the operator pauses; rolls the day over by itself
   useEffect(() => {
-    if (!tocando || !aoVivoDoDia || aoVivoDoDia.historico) return; // dias anteriores já estão completos
+    if (!tocando || !aoVivoDoDia || aoVivoDoDia.historico) return; // earlier days are already complete
     const t = setTimeout(() => chamarAoVivo(avancarHoraAoVivo, true), 5000 / velocidade);
     return () => clearTimeout(t);
   }, [tocando, aoVivoDoDia, velocidade, chamarAoVivo]);
@@ -482,15 +486,15 @@ export function App() {
     const delta = depois - antes;
     const xpTexto = `${xpGanho > 0 ? "+" : ""}${xpGanho} XP`;
     const partes = [
-      delta !== 0 ? `${delta > 0 ? "+" : ""}${delta}% Prontidão Operacional` : "",
+      delta !== 0 ? `${delta > 0 ? "+" : ""}${delta}% Operational Readiness` : "",
       xpGanho !== 0 ? xpTexto : "",
-      delta === 0 && xpGanho > 0 ? "teto da faixa" : "",
+      delta === 0 && xpGanho > 0 ? "range cap" : "",
     ].filter(Boolean);
     if (!partes.length) return;
     const texto = partes.join(" • ");
     setGanho({ id: Date.now(), texto });
   };
-  // O novo valor chega do backend: mostra o ganho/perda assim que a resposta pedida pela interação volta
+  // The new value comes from the backend: shows the gain/loss as soon as the response requested by the interaction returns
   useEffect(() => {
     if (!prontidao || !ganhoPendente.current) return;
     const { antes, xp: xpGanho } = ganhoPendente.current;
@@ -498,11 +502,11 @@ export function App() {
     mostrarGanho(antes, prontidao.aptidao_eva, xpGanho);
   }, [prontidao]);
 
-  // Contramedida aplicada na hora do relógio virtual (de novo = desfaz): acelera a recuperação a partir dela
+  // Countermeasure applied at the virtual clock hour (again = undo): speeds up recovery from then on
   const alternarContramedida = (texto: string) => {
     if (diaMissao === null) return;
     const hora = horaAplicada(aplicadasDia, texto);
-    // Desfazer devolve o XP (aplicar/desfazer em sequência não acumula pontos)
+    // Undo gives the XP back (apply/undo in sequence does not accumulate points)
     const xpGanho = hora === null ? XP_CONTRAMEDIDA : -XP_CONTRAMEDIDA;
     ganhoPendente.current = { antes: prontidao?.aptidao_eva ?? 0, xp: xpGanho };
     mudarHud(idAstronauta, (e) => {
@@ -513,21 +517,21 @@ export function App() {
     });
   };
 
-  // Tags do protocolo com o MESMO status de EVA do topo (prontidão): nunca "Apto para EVA" no protocolo
-  // enquanto o topo suspende, nem "Suspender EVA" enquanto o topo libera.
+  // Protocol tags with the SAME EVA status as the top (readiness): never "Fit for EVA" in the protocol
+  // while the top suspends, nor "Suspend EVA" while the top clears.
   const tagsProtocolo = (() => {
     const tags = ia?.tags_acao ?? [];
     const status = prontidao?.status_eva;
     if (!status || ambienteDia !== "Base Marciana") return tags;
-    const semEva = tags.filter((t) => !/apto para eva|suspender eva|restringir eva/i.test(t));
-    const eva = status === "INAPTO" ? "Suspender EVA" : status === "RESTRICAO" ? "Restringir EVA" : "Apto para EVA";
+    const semEva = tags.filter((t) => !/fit for eva|suspend eva|restrict eva/i.test(t));
+    const eva = status === "INAPTO" ? "Suspend EVA" : status === "RESTRICAO" ? "Restrict EVA" : "Fit for EVA";
     return [eva, ...semEva].slice(0, 3);
   })();
 
-  // ---------------- Primeira dobra: decisão em dia de alerta, metas em dia de rotina ----------------
+  // ---------------- First fold: decision on an alert day, goals on a routine day ----------------
   const diaDeAlerta = codigo >= 2 || prontidao?.status_eva === "INAPTO";
   const irParaProtocolo = () => document.getElementById("painel-protocolo")?.scrollIntoView({ block: "start" });
-  // Dados que sustentam o alerta: motivo principal de cada parte do mapa corporal, mais grave primeiro
+  // Data supporting the alert: main reason for each body map part, most severe first
   const evidencias: EvidenciaAlerta[] = (() => {
     const vistos = new Set<string>();
     const lista: EvidenciaAlerta[] = [];
@@ -544,12 +548,12 @@ export function App() {
   const seletorDia = (
     <div className="ml-auto w-64 shrink-0 rounded border border-cyan-800/60 bg-[#020611] px-3 py-2">
       <div className="flex items-center justify-end gap-2">
-        <span className="mr-auto font-mono text-[10px] uppercase tracking-[0.2em] text-slate-400">Dia da missão</span>
+        <span className="mr-auto font-mono text-[10px] uppercase tracking-[0.2em] text-slate-400">Mission day</span>
         <button
           onClick={() => mudarDia(-1)}
           disabled={!diaMissao || diaMissao <= 1}
           className="rounded bg-slate-800/80 p-0.5 text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-200 disabled:opacity-30"
-          aria-label="Dia anterior"
+          aria-label="Previous day"
         >
           <ChevronLeft className="h-3.5 w-3.5" />
         </button>
@@ -558,7 +562,7 @@ export function App() {
           onClick={() => mudarDia(1)}
           disabled={!diaMissao || diaMissao >= ultimoDia}
           className="rounded bg-slate-800/80 p-0.5 text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-200 disabled:opacity-30"
-          aria-label="Próximo dia"
+          aria-label="Next day"
         >
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
@@ -569,16 +573,16 @@ export function App() {
         max={ultimoDia}
         value={diaMissao ?? 1}
         onChange={(e) => {
-          liberarAlertaAte.current = 0; // navegação não dispara pop-up
+          liberarAlertaAte.current = 0; // navigation does not trigger the pop-up
           setDiaMissao(Number(e.target.value));
         }}
         className="trilha-dia mt-2 w-full"
-        aria-label="Dia da missão"
+        aria-label="Mission day"
         style={{ ["--progresso" as string]: `${(((diaMissao ?? 1) - 1) / Math.max(1, ultimoDia - 1)) * 100}%` }}
       />
       <div className="mt-0.5 flex justify-between font-mono text-[9px] text-slate-500">
-        <span>Dia 1</span>
-        <span>Último registro: dia {ultimoDia}</span>
+        <span>Day 1</span>
+        <span>Last record: day {ultimoDia}</span>
       </div>
     </div>
   );
@@ -588,7 +592,7 @@ export function App() {
       <div className="flex flex-wrap items-center gap-4">
         <div className="min-w-40 max-w-md flex-1">
           <div className="mb-1 flex justify-between font-mono text-[11px] text-slate-400">
-            <span>XP do dia</span>
+            <span>Daily XP</span>
             <span className="text-cyan-300">{xp} / 100</span>
           </div>
           <div className="h-2.5 overflow-hidden rounded-full bg-slate-800">
@@ -602,7 +606,7 @@ export function App() {
           {missoes.map((m) => (
             <span
               key={m.nome}
-              title={`${m.dica} (meta do projeto, não clínica)`}
+              title={`${m.dica} (project goal, not clinical)`}
               className={`flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] ${
                 m.ok ? "border-emerald-600/60 bg-emerald-500/10 text-emerald-300" : "border-slate-700 text-slate-500"
               }`}
@@ -613,7 +617,7 @@ export function App() {
           ))}
         </div>
       </div>
-      {/* Coach de exercício (segue a hora do player do wearable) */}
+      {/* Exercise coach (follows the hour of the wearable player) */}
       {horaria?.coach_exercicio && <CoachCompacto className="mt-3" coach={horaria.coach_exercicio} />}
     </Painel>
   );
@@ -621,36 +625,36 @@ export function App() {
   const valorOu = (v: number | null | undefined, unidade: string) => (v === null || v === undefined ? "—" : `${v}${unidade}`);
   const sinais: SinalResumo[] = tel
     ? [
-        { rotulo: "FC", valor: valorOu(pontoHora?.fc_bpm ?? tel.fc_repouso.valor, " bpm"), alerta: codigo > 1 && "fc_repouso" in alertas },
+        { rotulo: "HR", valor: valorOu(pontoHora?.fc_bpm ?? tel.fc_repouso.valor, " bpm"), alerta: codigo > 1 && "fc_repouso" in alertas },
         { rotulo: "SpO₂", valor: valorOu(pontoHora?.spo2_pct, "%") },
         {
-          rotulo: "PA",
+          rotulo: "BP",
           valor: `${pontoHora?.pa_sistolica ?? tel.pa_sistolica.valor}/${pontoHora?.pa_diastolica ?? tel.pa_diastolica.valor}`,
           alerta: codigo > 1 && "pressao_arterial" in alertas,
         },
         { rotulo: "Temp", valor: valorOu(pontoHora?.temperatura_c ?? tel.temperatura_c.valor, " °C"), alerta: codigo > 1 && "temperatura_c" in alertas },
-        { rotulo: "Sono", valor: `${tel.sono_horas.valor} h`, alerta: codigo > 1 && "sono_horas" in alertas },
+        { rotulo: "Sleep", valor: `${tel.sono_horas.valor} h`, alerta: codigo > 1 && "sono_horas" in alertas },
       ]
     : [];
 
   const sincronia: Sincronia = erroSync
-    ? { estado: "erro", texto: "Sem sincronia com o wearable" }
+    ? { estado: "erro", texto: "Wearable out of sync" }
     : !aoVivoDoDia
-      ? { estado: "coletando", texto: "Conectando ao wearable…" }
+      ? { estado: "coletando", texto: "Connecting to the wearable…" }
       : aoVivoDoDia.historico || aoVivoDoDia.coleta_ao_vivo === false
-        ? { estado: "ok", texto: "Dia registrado • 24 leituras" }
+        ? { estado: "ok", texto: "Recorded day • 24 readings" }
         : {
           estado: coletando ? "coletando" : "ok",
-          texto: `${coletando ? "Coletando" : "Sincronizado"} • Última leitura: ${aoVivoDoDia.ultima_leitura ?? aoVivoDoDia.ponto_atual.rotulo}`,
+          texto: `${coletando ? "Collecting" : "Synced"} • Last reading: ${aoVivoDoDia.ultima_leitura ?? aoVivoDoDia.ponto_atual.rotulo}`,
         };
 
   return (
-    // Tema de cores pelo cenário do dia: Base Marciana, Trânsito para Marte ou Estação Orbital
+    // Color theme by the day's scenario: Mars Base, Transit to Mars or Orbital Station
     <div data-theme={TEMA_AMBIENTE[ambienteDia] ?? "transit"} className="min-h-screen bg-[#03060c] pb-8 text-slate-200 font-sans">
-      {/* Vídeo de fundo do cenário do dia, em loop: mudo, sem controles, atrás de tudo */}
+      {/* Background video of the day's scenario, looping: muted, no controls, behind everything */}
       <video
         key={videoFundo}
-        className="pointer-events-none fixed inset-0 h-full w-full origin-top-left scale-[1.12] object-cover motion-reduce:hidden" /* ampliado 12% a partir do canto superior esquerdo: a marca d'água original do vídeo sai da tela (o selo fixo fica no lugar) */
+        className="pointer-events-none fixed inset-0 h-full w-full origin-top-left scale-[1.12] object-cover motion-reduce:hidden" /* enlarged 12% from the top-left corner: the video's original watermark goes off screen (the fixed badge stays in place) */
         src={videoFundo}
         autoPlay
         muted
@@ -659,10 +663,10 @@ export function App() {
         preload="auto"
         aria-hidden="true"
       />
-      {/* Camada escura por cima do vídeo para manter os painéis legíveis */}
+      {/* Dark layer over the video to keep the panels readable */}
       <div className="pointer-events-none fixed inset-0 bg-gradient-to-b from-[#03060c]/75 via-[#03060c]/65 to-[#03060c]/85" />
 
-      {/* Fundo com grade sutil */}
+      {/* Background with a subtle grid */}
       <div
         className="pointer-events-none fixed inset-0 opacity-[0.07]"
         style={{
@@ -672,10 +676,10 @@ export function App() {
         }}
       />
 
-      {/* ============ HEADER (uma linha) ============ */}
+      {/* ============ HEADER (one row) ============ */}
       <header className="sticky top-0 z-30 border-b border-(--borda) bg-(--card) px-4 py-2 backdrop-blur-md lg:px-6">
-        {/* Celular: marca, ações e tripulante empilhados e centralizados. Tablet: marca e ações na 1ª linha,
-            tripulante embaixo. Desktop: 3 colunas, tripulante centralizado. */}
+        {/* Phone: brand, actions and crew member stacked and centered. Tablet: brand and actions on the 1st row,
+            crew member below. Desktop: 3 columns, crew member centered. */}
         <div className="mx-auto grid max-w-[1500px] grid-cols-1 items-center justify-items-center gap-x-4 gap-y-2 sm:grid-cols-[1fr_auto] sm:justify-items-stretch lg:grid-cols-[1fr_auto_1fr]">
           <h1 className="flex items-center gap-2 whitespace-nowrap text-lg font-bold tracking-tight text-white">
             <LogoApp className="h-7 w-7 shrink-0" />
@@ -683,19 +687,19 @@ export function App() {
               <span>
                 AstroHealth <span className="text-cyan-400">Monitor</span>
               </span>
-              {/* Aviso discreto: o logotipo foi gerado por IA */}
-              <span className="font-mono text-[8px] font-normal tracking-wider text-slate-500">MARCA GERADA POR IA</span>
+              {/* Discreet notice: the logo was generated by AI */}
+              <span className="font-mono text-[8px] font-normal tracking-wider text-slate-500">AI-GENERATED BRAND</span>
             </span>
           </h1>
 
-          {/* Centro: tripulante e status do motor num único bloco */}
+          {/* Center: crew member and engine status in a single block */}
           <div className="order-last col-span-full flex h-9 max-w-full min-w-0 items-stretch justify-self-center overflow-hidden rounded-md border border-cyan-900/80 bg-slate-950/70 lg:order-none lg:col-span-1">
             <select
               value={idAstronauta}
               onChange={(e) => trocarAstronauta(e.target.value)}
               className="min-w-0 cursor-pointer truncate bg-transparent pr-2 pl-3 text-xs font-semibold text-slate-100 focus:bg-cyan-500/10 focus:outline-none [&>option]:bg-slate-950"
-              aria-label="Tripulante"
-              title="Tripulante"
+              aria-label="Crew member"
+              title="Crew member"
             >
               {(astronautas.length
                 ? astronautas
@@ -708,21 +712,21 @@ export function App() {
               ))}
             </select>
             <span
-              title={iaOnline ? "IA Groq conectada" : "Offline-First: orientação gerada localmente"}
+              title={iaOnline ? "Groq AI connected" : "Offline-First: guidance generated locally"}
               className={`flex items-center gap-1.5 whitespace-nowrap border-l border-cyan-900/80 px-3 font-mono text-[10px] uppercase tracking-wider ${
                 backendOnline === false ? "text-red-400" : "text-green-400"
               }`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${backendOnline === false ? "bg-red-500" : "animate-pulse bg-green-500"}`} />
-              <span className="hidden sm:inline">Motor {backendOnline === false ? "offline" : "online"}</span>
+              <span className="hidden sm:inline">Engine {backendOnline === false ? "offline" : "online"}</span>
               <span className={iaOnline ? "text-cyan-300" : "text-slate-500"}>
                 <span className="hidden sm:inline">• </span>
-                {iaOnline ? "IA" : "Local"}
+                {iaOnline ? "AI" : "Local"}
               </span>
             </span>
           </div>
 
-          {/* Direita: ações */}
+          {/* Right: actions */}
           <div className="flex items-center gap-2 sm:justify-self-end">
             <BotaoTopo
               cor="red"
@@ -730,14 +734,14 @@ export function App() {
               disabled={!backendOnline || registrando}
               onClick={() => executarRegistro({ simular_anomalia: true })}
             >
-              {registrando ? "Simulando..." : "Simular dia de alerta"}
+              {registrando ? "Simulating..." : "Simulate alert day"}
             </BotaoTopo>
             <BotaoTopo cor="emerald" icone={<Rocket className="h-3.5 w-3.5" />} onClick={() => setModalSpinoff(true)}>
               Spinoff
             </BotaoTopo>
           </div>
         </div>
-        {/* Barra de prontidão gamificada + sinais vitais resumidos */}
+        {/* Gamified readiness bar + summarized vital signs */}
         {dados && tel && (
           <div className="mx-auto mt-2 max-w-[1500px] border-t border-(--borda) pt-2">
             <ProntidaoHUD
@@ -755,9 +759,9 @@ export function App() {
       <div className="relative mx-auto max-w-[1500px] px-4 py-4 lg:px-6">
         {erro && <div className="mb-4 rounded border border-red-800 bg-red-950/60 p-3 text-sm text-red-200">{erro}</div>}
 
-        {/* ============ PRIMEIRA DOBRA ============
-            Dia de alerta: decisão (o que aconteceu, ação indicada, dados que sustentam) antes de tudo;
-            as metas e o XP descem para depois dos painéis. Dia de rotina: Missões do dia no topo. */}
+        {/* ============ FIRST FOLD ============
+            Alert day: decision (what happened, recommended action, supporting data) before everything else;
+            goals and XP move below the panels. Routine day: Daily missions at the top. */}
         {diaDeAlerta && ia ? (
           <DecisaoDia
             codigo={codigo}
@@ -769,31 +773,31 @@ export function App() {
             motivosEva={(prontidao?.bloqueios ?? []).map((x) => x.motivo)}
             acoes={ia.acao_imediata_astronauta ?? []}
             tags={tagsProtocolo}
-            escalonamento={codigo >= 3 ? "Escalonar para os cirurgiões de voo na Terra" : "Gerenciar a bordo com a tripulação"}
+            escalonamento={codigo >= 3 ? "Escalate to the flight surgeons on Earth" : "Manage on board with the crew"}
             evidencias={evidencias}
             onVerProtocolo={irParaProtocolo}
           >
             {seletorDia}
           </DecisaoDia>
         ) : !dados || !triagem ? (
-          // Sem dados (motor fora do ar ou carregando): nunca afirmar "sem alerta"
+          // No data (engine offline or loading): never state "no alert"
           <section className="mb-4 flex flex-wrap items-center gap-4 rounded-md border border-slate-600 bg-(--card) p-3 backdrop-blur-md">
             <p className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-300">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
               {backendOnline === false
-                ? "Sem dados do dia: o motor de triagem está fora do ar. Situação de saúde desconhecida, não presuma que está tudo bem."
-                : "Carregando a triagem do dia…"}
+                ? "No data for the day: the triage engine is offline. Health status unknown; do not assume everything is fine."
+                : "Loading today's triage…"}
             </p>
             {seletorDia}
           </section>
         ) : (
-          // Dia de rotina: faixa curta com o status e o seletor de dia (as Missões ficam abaixo do mapa corporal)
+          // Routine day: short strip with the status and the day selector (Missions sit below the body map)
           <section className="mb-4 flex flex-wrap items-center gap-4 rounded-md border border-(--borda) bg-(--card) p-3 backdrop-blur-md">
             <p className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-200">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-[#34D399]" />
               <span>
-                <span className="font-semibold text-[#34D399]">Dia de rotina</span> · sem alerta ativo na triagem do dia. Metas e XP nas{" "}
-                <span className="text-cyan-300">Missões do dia</span>, abaixo do mapa corporal.
+                <span className="font-semibold text-[#34D399]">Routine day</span> · no active alert in today's triage. Goals and XP are in{" "}
+                <span className="text-cyan-300">Daily missions</span>, below the body map.
               </span>
             </p>
             {seletorDia}
@@ -817,15 +821,15 @@ export function App() {
               onPico={simularPico}
             />
             </div>
-            {/* ============ MAPA CORPORAL ============ */}
+            {/* ============ BODY MAP ============ */}
             <div key="mapa">
             <Painel
-              titulo="Mapa corporal"
+              titulo="Body map"
               icone={<Satellite className="h-4 w-4" />}
               className="h-full"
               extra={<LocalMissaoWidget ambiente={ambienteDia} dia={diaMissao} />}
             >
-              {/* Personagem conforme o tripulante: sexo "F" usa o modelo feminino (ex.: Dra. Lucia Caminos) */}
+              {/* Character matches the crew member: sex "F" uses the female model (e.g. Dr. Lucia Caminos) */}
               <BodyMap
                 genero={astronauta?.sexo === "F" ? "F" : "M"}
                 motivos={motivosMapa}
@@ -834,11 +838,11 @@ export function App() {
                 onSelecionar={setRegiaoSel}
                 onSalvarRelato={(novoRelato) => {
                   const chave = `${novoRelato.vista}:${novoRelato.regiaoId}`;
-                  // A dor passa a pesar a partir da hora do relógio virtual em que foi relatada (editar mantém a hora)
+                  // Pain starts weighing from the virtual clock hour it was reported at (editing keeps the hour)
                   const relato = { ...novoRelato, hora: relatosAtuais[chave]?.hora ?? horaAtual };
                   const novos = { ...relatosAtuais, [chave]: relato };
                   atualizarRelatos({ ...relatos, [chaveRelatos]: novos });
-                  // Relato novo rende XP; mudar a intensidade de um relato só mexe na prontidão
+                  // A new report earns XP; changing a report's intensity only affects readiness
                   const xpRelato = chave in relatosAtuais ? 0 : XP_RELATO;
                   if (xpRelato) mudarHud(idAstronauta, (e) => ({ ...e, xp: e.xp + xpRelato }));
                   ganhoPendente.current = { antes: prontidao?.aptidao_eva ?? 0, xp: xpRelato };
@@ -850,10 +854,10 @@ export function App() {
                   atualizarRelatos({ ...relatos, [chaveRelatos]: resto });
                 }}
               />
-              <p className="mt-2 text-center font-mono text-[10px] text-slate-500">Categorias do dia: {triagem.categoria_risco}</p>
+              <p className="mt-2 text-center font-mono text-[10px] text-slate-500">Today's categories: {tCategorias(triagem.categoria_risco)}</p>
               {alertaHora && (
                 <p className={`mt-1 text-center font-mono text-[10px] ${alertaHora.semaforo_hora >= 3 ? "text-red-300" : "text-amber-300"}`}>
-                  ⚡ Wearable {alertaHora.rotulo}: {alertaHora.pico_simulado ? "pico simulado — " : ""}
+                  ⚡ Wearable {alertaHora.rotulo}: {alertaHora.pico_simulado ? "simulated spike: " : ""}
                   {alertaHora.alertas.map((a) => a.texto).join(" • ")}
                 </p>
               )}
@@ -861,15 +865,15 @@ export function App() {
 
             </div>
 
-            {/* ============ PROTOCOLO E CONTRAMEDIDAS ============ */}
-            {/* ============ MISSÕES DO DIA (abaixo do mapa corporal) ============ */}
+            {/* ============ PROTOCOL AND COUNTERMEASURES ============ */}
+            {/* ============ DAILY MISSIONS (below the body map) ============ */}
             <div key="missoes">
-              {painelMissoes(diaDeAlerta && ia ? "Missões do dia · metas de rotina" : "Missões do dia", "h-full")}
+              {painelMissoes(diaDeAlerta && ia ? "Daily missions · routine goals" : "Daily missions", "h-full")}
             </div>
 
             <div key="protocolo" id="painel-protocolo" className="scroll-mt-40">
             <Painel
-              titulo="Protocolo e contramedidas"
+              titulo="Protocol and countermeasures"
               icone={<Sparkles className="h-4 w-4" />}
               className="flex h-full flex-col"
               extra={
@@ -881,7 +885,7 @@ export function App() {
                         iaOnline ? "border-cyan-600/70 text-cyan-300" : "border-slate-600 text-slate-400"
                       }`}
                     >
-                      {iaOnline ? "Groq AI" : "Telemetria local"}
+                      {iaOnline ? "Groq AI" : "Local telemetry"}
                     </span>
                   )}
                   <button
@@ -890,16 +894,16 @@ export function App() {
                     className="flex items-center gap-1 rounded border border-cyan-700 px-2 py-1 font-mono text-[10px] uppercase text-cyan-300 hover:bg-cyan-500/10 disabled:opacity-50"
                   >
                     <RefreshCw className={`h-3 w-3 ${carregando ? "animate-spin" : ""}`} />
-                    {carregando ? "Analisando" : "Reanalisar"}
+                    {carregando ? "Analyzing" : "Reanalyze"}
                   </button>
                 </div>
               }
             >
-              {/* Escalonamento: local vs. Terra */}
+              {/* Escalation: local vs. Earth */}
               <div className={`mb-4 rounded border p-3 ${corNivel.borda} ${corNivel.fundo}`}>
                 <p className={`flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider ${corNivel.texto}`}>
                   {codigo >= 3 ? <Earth className="h-4 w-4" /> : codigo === 2 ? <Satellite className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                  {codigo >= 3 ? "Escalonar: cirurgiões de voo na Terra" : codigo === 2 ? "Gerenciar a bordo: tripulação" : "Nominal: sem escalonamento"}
+                  {codigo >= 3 ? "Escalate: flight surgeons on Earth" : codigo === 2 ? "Manage on board: crew" : "Nominal: no escalation"}
                 </p>
                 <p className="mt-1 text-[11px] text-slate-400">{atrasoSinal}</p>
               </div>
@@ -908,14 +912,14 @@ export function App() {
                 <div className="flex flex-1 flex-col gap-4 text-sm">
                   <p className="font-semibold leading-snug text-white">{ia.resumo_alerta}</p>
                   <div>
-                    <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Por que isso acontece no espaço?</p>
+                    <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Why does this happen in space?</p>
                     <p className="mt-1 text-xs leading-relaxed text-slate-300">{ia.explicacao_fisiologica}</p>
                   </div>
                   {tagsProtocolo.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5">
                       {ia.score_risco !== undefined && ia.score_risco !== null && (
                         <span className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold ${corNivel.borda} ${corNivel.texto}`}>
-                          {ia.status} • {ia.score_risco}/100
+                          {tStatus(ia.status)} • {ia.score_risco}/100
                         </span>
                       )}
                       {tagsProtocolo.map((tag) => (
@@ -926,7 +930,7 @@ export function App() {
                     </div>
                   )}
                   <div>
-                    <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Contramedidas</p>
+                    <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Countermeasures</p>
                     <ol className="mt-1.5 space-y-1.5">
                       {(ia.acao_imediata_astronauta ?? []).map((acao, i) => {
                         const hora = horaAplicada(aplicadasDia, acao);
@@ -938,8 +942,8 @@ export function App() {
                               onClick={() => alternarContramedida(acao)}
                               title={
                                 hora === null
-                                  ? `Marcar como aplicada às ${String(horaAtual).padStart(2, "0")}:00 (acelera a recuperação a partir dessa hora)`
-                                  : "Desfazer"
+                                  ? `Mark as applied at ${String(horaAtual).padStart(2, "0")}:00 (speeds up recovery from that hour on)`
+                                  : "Undo"
                               }
                               className={`shrink-0 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
                                 hora === null
@@ -947,7 +951,7 @@ export function App() {
                                   : "border-emerald-600/70 bg-emerald-500/10 text-emerald-300"
                               }`}
                             >
-                              {hora === null ? "Aplicar" : `✓ ${String(hora).padStart(2, "0")}:00`}
+                              {hora === null ? "Apply" : `✓ ${String(hora).padStart(2, "0")}:00`}
                             </button>
                           </li>
                         );
@@ -955,26 +959,26 @@ export function App() {
                     </ol>
                   </div>
                   <div className="mt-auto rounded border border-slate-800 bg-slate-950 p-3 text-xs">
-                    <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-slate-500">Nível de escalonamento</p>
+                    <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-slate-500">Escalation level</p>
                     <p className="text-slate-200">{ia.nivel_escalonamento}</p>
                   </div>
                 </div>
               )}
 
               <div className="mt-3 space-y-0.5 border-t border-slate-800 pt-2 font-mono text-[10px] text-slate-500">
-                <p>Fonte: {ia?.fonte_descricao}</p>
+                <p>Source: {ia?.fonte_descricao}</p>
                 {dados.uso_groq && (
                   <p>
-                    Groq nesta sessão: {dados.uso_groq.chamadas} chamada(s) • {dados.uso_groq.tokens_total} tokens
+                    Groq this session: {dados.uso_groq.chamadas} call(s) • {dados.uso_groq.tokens_total} tokens
                     {dados.uso_groq.limites_restantes?.requisicoes_dia_restantes &&
-                      ` • restam ${dados.uso_groq.limites_restantes.requisicoes_dia_restantes}/${dados.uso_groq.limites_restantes.requisicoes_dia_limite} hoje`}
+                      ` • ${dados.uso_groq.limites_restantes.requisicoes_dia_restantes}/${dados.uso_groq.limites_restantes.requisicoes_dia_limite} left today`}
                   </p>
                 )}
               </div>
             </Painel>
             </div>
 
-            {/* ============ WIDGETS (cada um é um quadro da grade) ============ */}
+            {/* ============ WIDGETS (each one is a grid frame) ============ */}
             <div key="dispositivo" className="flex flex-col">
               <DispositivoWidget />
             </div>
@@ -982,8 +986,8 @@ export function App() {
               <TemperaturaExternaWidget ambiente={ambienteDia} dia={diaMissao} />
             </div>
 
-            {/* ============ TENDÊNCIA PREDITIVA + EXAMES SUGERIDOS ============ */}
-            {/* Protegido: um backend antigo (sem esses blocos) não derruba a tela */}
+            {/* ============ PREDICTIVE TREND + SUGGESTED EXAMS ============ */}
+            {/* Guarded: an old backend (without these blocks) does not break the screen */}
             <div key="predicao">
               {dados.predicao_tendencia && <PredicaoPanel
                   className="h-full"
@@ -1003,26 +1007,26 @@ export function App() {
 
             </div>
 
-            {/* ============ TENDÊNCIA 7 DIAS ============ */}
+            {/* ============ 7-DAY TREND ============ */}
             <div key="tendencia">
-            <Painel titulo="Tendência — últimos 7 dias" className="flex h-full flex-col">
+            <Painel titulo="Trend: last 7 days" className="flex h-full flex-col">
               <TendenciaChart serie={dados.serie_7_dias} />
             </Painel>
 
             </div>
 
-            {/* ============ TELEMETRIA (rolável) ============ */}
-            {/* O quadro termina logo depois dos cards; no espaço que sobra embaixo fica o selo de IA,
-                alinhado com a base do quadro de Tendência ao lado */}
+            {/* ============ TELEMETRY (scrollable) ============ */}
+            {/* The frame ends right after the cards; the space left below holds the AI badge,
+                aligned with the bottom of the Trend frame beside it */}
             <div key="telemetria" className="flex flex-col gap-4">
             <Painel
-              titulo="Telemetria vs. linha de base"
+              titulo="Telemetry vs. baseline"
               extra={
                 <span
                   className={`flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold ${corNivel.borda} ${corNivel.texto}`}
                 >
                   {codigo >= 3 ? <ShieldAlert className="h-3 w-3" /> : codigo === 2 ? <AlertTriangle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
-                  N{codigo}
+                  L{codigo}
                 </span>
               }
             >
@@ -1051,7 +1055,7 @@ export function App() {
                         <p className="font-mono text-[10px] text-slate-400">
                           {d.base !== null ? (
                             <>
-                              {c.chave === "treino_resistido_min" ? "meta" : "base"} {d.base} •{" "}
+                              {c.chave === "treino_resistido_min" ? "goal" : "baseline"} {d.base} •{" "}
                               <span className={emAlerta ? (codigo >= 3 ? "text-red-300" : "text-amber-300") : "text-slate-300"}>{desvio}</span>
                             </>
                           ) : c.chave === "radiacao_acumulada_msv" ? (
@@ -1060,7 +1064,7 @@ export function App() {
                               {String((alertas.radiacao_acumulada_msv as { incremento_7_dias_msv?: number } | undefined)?.incremento_7_dias_msv ?? "—")} mSv
                             </>
                           ) : (
-                            <>média 7d: {dados.medias_7_dias.humor}</>
+                            <>7-day avg: {dados.medias_7_dias.humor}</>
                           )}
                         </p>
                       </div>
@@ -1072,18 +1076,18 @@ export function App() {
                       tel.sintoma_neuro_ocular !== "Nenhum" ? "border-red-500/60 bg-red-500/10 text-red-300" : "border-slate-800 bg-(--subcard) text-slate-400"
                     }`}
                   >
-                    <p className="text-[10px] uppercase tracking-wider text-slate-500">Sintoma neuro-ocular</p>
-                    <p className="mt-1 text-sm">{tel.sintoma_neuro_ocular}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500">Neuro-ocular symptom</p>
+                    <p className="mt-1 text-sm">{SINTOMA_EN[tel.sintoma_neuro_ocular] ?? tel.sintoma_neuro_ocular}</p>
                   </div>
               </div>
             </Painel>
-              {/* Selo de conteúdo de IA (maior) */}
+              {/* AI content badge (larger) */}
               <div className="mt-auto flex justify-end">
-                <div className="flex items-center gap-2.5 text-white/85 select-none" aria-label="Conteúdo criado com IA">
-                  <span className="text-3xl font-black leading-none">IA</span>
+                <div className="flex items-center gap-2.5 text-white/85 select-none" aria-label="AI-generated content">
+                  <span className="text-3xl font-black leading-none">AI</span>
                   <span className="leading-tight">
-                    <span className="block text-sm font-semibold uppercase tracking-wide">Conteúdo criado com IA</span>
-                    <span className="block text-[9px] uppercase tracking-[0.15em] text-white/60">Inteligência artificial</span>
+                    <span className="block text-sm font-semibold uppercase tracking-wide">AI-generated content</span>
+                    <span className="block text-[9px] uppercase tracking-[0.15em] text-white/60">Artificial intelligence</span>
                   </span>
                 </div>
               </div>
@@ -1093,27 +1097,27 @@ export function App() {
 
       </div>
 
-      {/* Aviso de registro: flutuante, some sozinho */}
+      {/* Record notice: floating, disappears on its own */}
       {aviso && (
         <div className="fixed right-4 bottom-10 z-40 max-w-md rounded border border-cyan-700 bg-[#06111f]/95 p-3 text-xs text-cyan-100">
           <div className="flex items-start gap-3">
             <span className="flex-1">{aviso}</span>
-            <button onClick={() => setAviso(null)} className="text-cyan-400 hover:text-white" aria-label="Fechar aviso">
+            <button onClick={() => setAviso(null)} className="text-cyan-400 hover:text-white" aria-label="Close notice">
               ✕
             </button>
           </div>
         </div>
       )}
 
-      {/* Aviso obrigatório: rodapé fino fixo, sem ocupar espaço no topo */}
+      {/* Mandatory notice: thin fixed footer, taking no space at the top */}
       <footer className="fixed inset-x-0 bottom-0 z-30 border-t border-amber-900/40 bg-[#0b0803]/95 py-1 pr-52 pl-4 text-center text-[10px] text-amber-200/80">
-        <span>Protótipo de hackathon (NASA Space Apps 2026) • DADOS SIMULADOS • Não é dispositivo médico e não substitui avaliação profissional.</span>
-        {/* Selo do vídeo de fundo (gerado com IA), fixo no canto direito do rodapé */}
-        <span className="absolute top-1/2 right-4 flex -translate-y-1/2 items-center gap-1.5 text-white/80 select-none" aria-label="Conteúdo criado com IA">
-          <span className="text-sm font-black leading-none">IA</span>
+        <span>Hackathon prototype (NASA Space Apps 2026) • SIMULATED DATA • Not a medical device and not a substitute for professional evaluation.</span>
+        {/* Background video badge (AI-generated), fixed at the right corner of the footer */}
+        <span className="absolute top-1/2 right-4 flex -translate-y-1/2 items-center gap-1.5 text-white/80 select-none" aria-label="AI-generated content">
+          <span className="text-sm font-black leading-none">AI</span>
           <span className="text-left leading-none">
-            <span className="block text-[9px] font-semibold uppercase tracking-wide">Conteúdo criado com IA</span>
-            <span className="block text-[7px] uppercase tracking-[0.15em] text-white/55">Inteligência artificial</span>
+            <span className="block text-[9px] font-semibold uppercase tracking-wide">AI-generated content</span>
+            <span className="block text-[7px] uppercase tracking-[0.15em] text-white/55">Artificial intelligence</span>
           </span>
         </span>
       </footer>
@@ -1129,7 +1133,7 @@ export function App() {
         onFechar={fecharAlertaCritico}
         onVerDecisao={() => {
           fecharAlertaCritico();
-          window.scrollTo({ top: 0 }); // a Decisão do dia fica no topo
+          window.scrollTo({ top: 0 }); // Today's decision sits at the top
         }}
       />
     </div>

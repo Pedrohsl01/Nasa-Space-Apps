@@ -1,6 +1,6 @@
 import type { Analise, Astronauta, Medicoes, ProntidaoCumulativa, RelatoDesconforto, TelemetriaHoraria } from "./types";
 
-// Padrão: backend local na porta 8000. Pode ser trocado com VITE_API_URL (ex.: frontend/.env.local)
+// Default: local backend on port 8000. Can be changed with VITE_API_URL (e.g. frontend/.env.local)
 export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 
 async function pedir<T>(caminho: string, init?: RequestInit): Promise<T> {
@@ -9,15 +9,15 @@ async function pedir<T>(caminho: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!res.ok) {
-    // FastAPI devolve { detail: "..." } ou, em erro de validação, { detail: [ {msg, loc}, ... ] }
-    let mensagem = `Erro ${res.status}`;
+    // FastAPI returns { detail: "..." } or, on a validation error, { detail: [ {msg, loc}, ... ] }
+    let mensagem = `Error ${res.status}`;
     try {
       const corpo = await res.json();
       if (typeof corpo.detail === "string") mensagem = corpo.detail;
       else if (Array.isArray(corpo.detail))
         mensagem = corpo.detail.map((d: { loc: string[]; msg: string }) => `${d.loc[d.loc.length - 1]}: ${d.msg}`).join(" • ");
     } catch {
-      /* corpo sem JSON */
+      /* body without JSON */
     }
     throw new Error(mensagem);
   }
@@ -33,7 +33,7 @@ export const analisarDia = (
   dia_missao: number,
   forcar_ia = false,
   desconfortos: RelatoDesconforto[] = [],
-  pergunta?: string, // pergunta do Chat de Contramedidas
+  pergunta?: string, // question from the Countermeasures Chat
 ) =>
   pedir<Analise>("/analisar-ia", {
     method: "POST",
@@ -42,7 +42,7 @@ export const analisarDia = (
       dia_missao,
       forcar_ia,
       pergunta,
-      // Sintomas relatados pelo astronauta, para a IA cruzar com os sinais vitais
+      // Symptoms reported by the astronaut, for the AI to cross-check with the vital signs
       desconfortos: desconfortos.map(({ regiaoId, vista, nome, tipo, intensidade, detalhe }) => ({
         regiao: regiaoId,
         nome,
@@ -66,7 +66,7 @@ export const calcularProntidao = (corpo: {
   picos: number[];
   desconfortos: RelatoDesconforto[];
   contramedidas: { hora: number; texto: string }[];
-  horaPadrao: number; // hora usada para relatos antigos, salvos sem hora
+  horaPadrao: number; // hour used for old reports, saved without an hour
 }) =>
   pedir<ProntidaoCumulativa>("/prontidao", {
     method: "POST",
@@ -88,13 +88,13 @@ export const calcularProntidao = (corpo: {
     }),
   });
 
-// ---------------- Wearable ao vivo (uma leitura por hora) ----------------
+// ---------------- Live wearable (one reading per hour) ----------------
 export interface EventosAoVivo {
   id_astronauta: string;
   dia_missao: number;
   desconfortos: RelatoDesconforto[];
   contramedidas: { hora: number; texto: string }[];
-  horaPadrao: number; // hora usada para relatos antigos, salvos sem hora
+  horaPadrao: number; // hour used for old reports, saved without an hour
 }
 
 const corpoEventos = (e: EventosAoVivo) => ({
@@ -112,15 +112,15 @@ const corpoEventos = (e: EventosAoVivo) => ({
   })),
 });
 
-/** Começa o dia às 00:00 com uma leitura (proximo=true fecha o dia e abre o seguinte). */
+/** Starts the day at 00:00 with one reading (proximo=true closes the day and opens the next one). */
 export const reiniciarDiaAoVivo = (e: EventosAoVivo, proximo = false) =>
   pedir<TelemetriaHoraria>("/dia/reiniciar", { method: "POST", body: JSON.stringify({ ...corpoEventos(e), proximo }) });
 
-/** Gera só a leitura da próxima hora (depois das 23:00, vira o dia). */
+/** Generates only the next hour's reading (after 23:00, rolls the day over). */
 export const avancarHoraAoVivo = (e: EventosAoVivo, pico = false) =>
   pedir<TelemetriaHoraria>("/telemetria/avancar-hora", { method: "POST", body: JSON.stringify({ ...corpoEventos(e), pico }) });
 
-/** Estado ao vivo com os eventos do mapa/chat aplicados, sem gerar leitura. */
+/** Live state with the body map/chat events applied, without generating a reading. */
 export const estadoAoVivo = (e: EventosAoVivo) =>
   pedir<TelemetriaHoraria>("/telemetria/estado", { method: "POST", body: JSON.stringify(corpoEventos(e)) });
 

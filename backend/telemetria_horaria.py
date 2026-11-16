@@ -1,12 +1,12 @@
 """
-Telemetria contínua de wearable (24 pontos, 00:00–23:00) gerada sob demanda.
+Continuous wearable telemetry (24 points, 00:00–23:00) generated on demand.
 
-Nada aqui é gravado no .xlsx: os pontos são derivados do registro diário (âncora) e da rotina
-do ambiente de missão. A variação é estocástica, mas determinística: a semente vem de
-(astronauta, dia, hora), então o mesmo dia sempre gera a mesma curva.
+Nothing here is written to the .xlsx: the points are derived from the daily record (anchor) and from the
+mission environment routine. The variation is stochastic but deterministic: the seed comes from
+(astronaut, day, hour), so the same day always generates the same curve.
 
-Limiares horários e perfis de atividade são ESCOLHAS DE PROJETO para a demo (a confirmar com
-profissional de saúde), não critérios clínicos oficiais.
+Hourly thresholds and activity profiles are DESIGN CHOICES for the demo (to be confirmed with a
+health professional), not official clinical criteria.
 """
 import math
 import random
@@ -14,8 +14,8 @@ import zlib
 from typing import Any, Dict, List, Optional
 
 # ---------------------------------------------------------------------------
-# Perfis de atividade: deslocamento esperado em relação ao repouso do dia
-# fc/pa em unidades absolutas, temp em °C, hrv como fator, estresse 0–100
+# Activity profiles: expected offset from the day's resting values
+# fc/pa in absolute units, temp in °C, hrv as a factor, stress 0–100
 # ---------------------------------------------------------------------------
 PERFIS: Dict[str, Dict[str, float]] = {
     "sono":        {"fc": -8, "pas": -8, "pad": -6, "temp": -0.3, "spo2": 97.0, "hrv": 1.25, "estresse": 12},
@@ -30,8 +30,8 @@ PERFIS: Dict[str, Dict[str, float]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Rotinas por ambiente: hora -> (perfil, nome da atividade, descrição curta)
-# As horas de sono são ajustadas pelas horas de sono registradas no dia.
+# Routines per environment: hour -> (profile, activity name, short description)
+# Sleep hours are adjusted by the sleep hours recorded for the day.
 # ---------------------------------------------------------------------------
 def _rotina(itens: Dict[range, tuple]) -> Dict[int, tuple]:
     mapa: Dict[int, tuple] = {}
@@ -43,50 +43,50 @@ def _rotina(itens: Dict[range, tuple]) -> Dict[int, tuple]:
 
 ROTINAS: Dict[str, Dict[int, tuple]] = {
     "Estacao Orbital": _rotina({
-        range(6, 7): ("repouso", "Despertar e higiene", "Ciclo circadiano artificial: luz azul-enriquecida acende às 06h"),
-        range(7, 8): ("comunicacao", "Briefing com o controle de missão", "Planejamento do dia com a Terra (quase tempo real)"),
-        range(8, 10): ("trabalho", "Trabalho técnico em microgravidade", "Experimentos e manutenção a bordo"),
-        range(10, 11): ("resistido", "Treino ARED + esteira", "Exercício resistido e aeróbico contra perda óssea e muscular"),
-        range(11, 12): ("repouso", "Recuperação pós-treino", "Hidratação e alongamento"),
-        range(12, 13): ("repouso", "Almoço", "Refeição e pausa"),
-        range(13, 17): ("trabalho", "Experimentos científicos", "Janela de trabalho técnico em microgravidade"),
-        range(17, 18): ("aerobico", "Treino complementar (esteira/cicloergômetro)", "Usado quando a meta diária ainda não foi cumprida"),
-        range(18, 19): ("repouso", "Jantar", "Refeição em grupo"),
-        range(19, 20): ("comunicacao", "Contato com família", "Comunicação pessoal com a Terra"),
-        range(20, 21): ("repouso", "Monitoramento de fluidos cefálicos", "Checagem de pressão e sintomas oculares (desvio de fluidos)"),
-        range(21, 22): ("lazer", "Lazer", "Tempo livre, luz âmbar para preparar o sono"),
+        range(6, 7): ("repouso", "Wake-up and hygiene", "Artificial circadian cycle: blue-enriched light turns on at 06:00"),
+        range(7, 8): ("comunicacao", "Briefing with mission control", "Day planning with Earth (near real time)"),
+        range(8, 10): ("trabalho", "Technical work in microgravity", "Onboard experiments and maintenance"),
+        range(10, 11): ("resistido", "ARED + treadmill workout", "Resistance and aerobic exercise against bone and muscle loss"),
+        range(11, 12): ("repouso", "Post-workout recovery", "Hydration and stretching"),
+        range(12, 13): ("repouso", "Lunch", "Meal and break"),
+        range(13, 17): ("trabalho", "Science experiments", "Technical work window in microgravity"),
+        range(17, 18): ("aerobico", "Supplementary workout (treadmill/cycle ergometer)", "Used when the daily goal has not been met yet"),
+        range(18, 19): ("repouso", "Dinner", "Group meal"),
+        range(19, 20): ("comunicacao", "Family contact", "Personal communication with Earth"),
+        range(20, 21): ("repouso", "Cephalad fluid monitoring", "Blood pressure and eye symptom check (fluid shift)"),
+        range(21, 22): ("lazer", "Leisure", "Free time, amber light to prepare for sleep"),
     }),
     "Transito para Marte": _rotina({
-        range(6, 7): ("repouso", "Despertar", "Confinamento prolongado: rotina rígida ajuda o relógio biológico"),
-        range(7, 8): ("comunicacao", "Briefing da tripulação", "Planejamento local (Terra responde com atraso)"),
-        range(8, 10): ("resistido", "Protocolo intensivo anti-atrofia", "Treino resistido pesado contra perda óssea e muscular"),
-        range(10, 13): ("trabalho", "Operações e navegação", "Sistemas da nave e navegação"),
-        range(13, 14): ("repouso", "Almoço", "Refeição e pausa"),
-        range(14, 15): ("trabalho", "Dosimetria de radiação cósmica", "Leitura dos dosímetros: maior exposição fora da magnetosfera"),
-        range(15, 16): ("aerobico", "Treino aeróbico", "Cicloergômetro para condicionamento cardiovascular"),
-        range(16, 19): ("trabalho", "Manutenção e experimentos", "Trabalho em ambiente confinado"),
-        range(19, 20): ("repouso", "Avaliação ARCHeR de sono e estresse", "Autoavaliação de humor, sono e carga de trabalho"),
-        range(20, 21): ("comunicacao", "Mensagens com a Terra", "Comunicação com atraso de vários minutos"),
-        range(21, 22): ("lazer", "Lazer", "Tempo livre em grupo"),
+        range(6, 7): ("repouso", "Wake-up", "Prolonged confinement: a strict routine helps the body clock"),
+        range(7, 8): ("comunicacao", "Crew briefing", "Local planning (Earth replies with a delay)"),
+        range(8, 10): ("resistido", "Intensive anti-atrophy protocol", "Heavy resistance training against bone and muscle loss"),
+        range(10, 13): ("trabalho", "Operations and navigation", "Spacecraft systems and navigation"),
+        range(13, 14): ("repouso", "Lunch", "Meal and break"),
+        range(14, 15): ("trabalho", "Cosmic radiation dosimetry", "Dosimeter readout: higher exposure outside the magnetosphere"),
+        range(15, 16): ("aerobico", "Aerobic workout", "Cycle ergometer for cardiovascular conditioning"),
+        range(16, 19): ("trabalho", "Maintenance and experiments", "Work in a confined environment"),
+        range(19, 20): ("repouso", "ARCHeR sleep and stress assessment", "Self-assessment of mood, sleep and workload"),
+        range(20, 21): ("comunicacao", "Messages with Earth", "Communication with a delay of several minutes"),
+        range(21, 22): ("lazer", "Leisure", "Group free time"),
     }),
     "Base Marciana": _rotina({
-        range(6, 7): ("repouso", "Despertar", "Gravidade parcial (0,38 g)"),
-        range(7, 8): ("pre_resp", "Pré-respiração e preparo do traje", "Oxigênio puro antes da EVA para evitar doença descompressiva"),
-        range(8, 12): ("eva", "EVA em superfície", "Atividade extraveicular com traje pressurizado"),
-        range(12, 13): ("repouso", "Pós-EVA: checagem respiratória", "Monitoramento de SpO₂/CO₂ e fadiga física"),
-        range(13, 14): ("repouso", "Almoço", "Refeição e pausa"),
-        range(14, 17): ("trabalho", "Laboratório e geologia", "Análise de amostras coletadas"),
-        range(17, 18): ("resistido", "Treino resistido em 0,38 g", "Carga complementar à gravidade parcial"),
-        range(18, 19): ("repouso", "Jantar", "Refeição em grupo"),
-        range(19, 20): ("comunicacao", "Comunicação com a Terra", "Atraso de sinal de até ~20 min por trecho"),
-        range(20, 21): ("repouso", "Avaliação de fadiga física", "Escala de fadiga e recuperação muscular"),
-        range(21, 22): ("lazer", "Lazer", "Tempo livre na base"),
+        range(6, 7): ("repouso", "Wake-up", "Partial gravity (0.38 g)"),
+        range(7, 8): ("pre_resp", "Pre-breathe and suit prep", "Pure oxygen before the EVA to prevent decompression sickness"),
+        range(8, 12): ("eva", "Surface EVA", "Extravehicular activity in a pressurized suit"),
+        range(12, 13): ("repouso", "Post-EVA: respiratory check", "SpO₂/CO₂ and physical fatigue monitoring"),
+        range(13, 14): ("repouso", "Lunch", "Meal and break"),
+        range(14, 17): ("trabalho", "Lab and geology", "Analysis of collected samples"),
+        range(17, 18): ("resistido", "Resistance training at 0.38 g", "Extra load to complement partial gravity"),
+        range(18, 19): ("repouso", "Dinner", "Group meal"),
+        range(19, 20): ("comunicacao", "Communication with Earth", "Signal delay of up to ~20 min each way"),
+        range(20, 21): ("repouso", "Physical fatigue assessment", "Fatigue scale and muscle recovery"),
+        range(21, 22): ("lazer", "Leisure", "Free time at the base"),
     }),
 }
 
-# Horas de treino por ambiente e fração da meta prevista em cada uma (distribui os minutos do dia)
+# Workout hours per environment and the share of the goal planned for each (spreads the day's minutes)
 JANELAS_TREINO: Dict[str, List[tuple]] = {
-    "Estacao Orbital": [(10, 1.0), (17, 0.0)],     # 17h só recebe o que passar de 60 min
+    "Estacao Orbital": [(10, 1.0), (17, 0.0)],     # 17:00 only gets whatever exceeds 60 min
     "Transito para Marte": [(8, 0.35), (9, 0.35), (15, 0.30)],
     "Base Marciana": [(17, 1.0)],
 }
@@ -104,11 +104,11 @@ PARTES_POR_SINAL = {
 }
 
 TIPOS_PICO = {
-    "taquicardia": "Taquicardia aguda",
-    "dessaturacao": "Queda de saturação (SpO₂)",
-    "hipertensao": "Pico hipertensivo",
-    "febre": "Elevação aguda de temperatura",
-    "estresse_agudo": "Estresse agudo (HRV muito baixa)",
+    "taquicardia": "Acute tachycardia",
+    "dessaturacao": "Oxygen desaturation (SpO₂)",
+    "hipertensao": "Hypertensive spike",
+    "febre": "Acute temperature rise",
+    "estresse_agudo": "Acute stress (very low HRV)",
 }
 
 
@@ -117,7 +117,7 @@ def _semente(*partes: Any) -> int:
 
 
 def _distribuir_treino(ambiente: str, minutos: int) -> Dict[int, int]:
-    """Distribui os minutos de treino do dia nas janelas de treino do ambiente."""
+    """Spreads the day's workout minutes across the environment's workout windows."""
     janelas = JANELAS_TREINO.get(ambiente, [(10, 1.0)])
     resultado = {h: 0 for h, _ in janelas}
     if ambiente == "Estacao Orbital":
@@ -134,31 +134,31 @@ def _distribuir_treino(ambiente: str, minutos: int) -> Dict[int, int]:
 
 
 def _horas_de_sono(sono_horas: float) -> set:
-    """Janela de sono começa às 22h e dura as horas de sono registradas no dia."""
+    """The sleep window starts at 22:00 and lasts the sleep hours recorded for the day."""
     n = max(0, min(14, int(round(sono_horas))))
     return {(INICIO_SONO + i) % 24 for i in range(n)}
 
 
 # ---------------------------------------------------------------------------
-# Gerador INCREMENTAL de leituras (smartwatch): uma hora por vez
+# INCREMENTAL reading generator (smartwatch): one hour at a time
 #
-#   valor(h+1) = esperado(h+1) + resíduo(h+1) + efeito(h+1)
-#   resíduo(h+1) = ρ·resíduo(h) + √(1−ρ²)·σ·N(0,1)        (continuidade autorregressiva)
-#   efeito(h+1)  = 0,4·efeito(h) + 0,6·alvo(eventos em h)  (dor, contramedida e fadiga entram com atraso)
-#   esperado(h)  = repouso do dia + perfil da atividade + ritmo circadiano da hora
+#   value(h+1) = expected(h+1) + residual(h+1) + effect(h+1)
+#   residual(h+1) = ρ·residual(h) + √(1−ρ²)·σ·N(0,1)        (autoregressive continuity)
+#   effect(h+1)  = 0.4·effect(h) + 0.6·target(events at h)  (pain, countermeasure and fatigue come in with a lag)
+#   expected(h)  = day's resting value + activity profile + circadian rhythm of the hour
 # ---------------------------------------------------------------------------
 SINAIS = ["fc_bpm", "pa_sistolica", "pa_diastolica", "temperatura_c", "spo2_pct", "hrv_ms", "estresse_wearable"]
-# Desvio-padrão do ruído estacionário por sinal (hrv_ms é fração do esperado)
+# Standard deviation of the stationary noise per signal (hrv_ms is a fraction of the expected value)
 SIGMA = {"fc_bpm": 3.0, "pa_sistolica": 4.0, "pa_diastolica": 3.0, "temperatura_c": 0.08, "spo2_pct": 0.6, "hrv_ms": 0.08, "estresse_wearable": 6.0}
-RHO_AR = 0.6  # autocorrelação de 1 h
-LAG_EFEITO = 0.4  # fração do efeito da hora anterior que permanece (resposta fisiológica gradual)
+RHO_AR = 0.6  # 1 h autocorrelation
+LAG_EFEITO = 0.4  # fraction of the previous hour's effect that remains (gradual physiological response)
 
 
 def planejar_dia(registro: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Plano do dia a partir do registro diário: agenda de atividades (rotina do ambiente, janela de sono,
-    minutos de treino por hora), repouso de referência e horas de lacuna de sinal.
-    Não gera nenhuma leitura: as leituras saem uma a uma de iniciar_leitura / gerar_proxima_leitura_horaria.
+    Day plan from the daily record: activity schedule (environment routine, sleep window,
+    workout minutes per hour), reference resting values and signal gap hours.
+    Generates no reading: readings come one by one from iniciar_leitura / gerar_proxima_leitura_horaria.
     """
     id_ast = str(registro["id_astronauta"])
     dia = int(registro["dia_missao"])
@@ -173,7 +173,7 @@ def planejar_dia(registro: Dict[str, Any]) -> Dict[str, Any]:
     horas_sono = _horas_de_sono(sono)
     treino_por_hora = _distribuir_treino(ambiente, int(registro["treino_resistido_min"]))
 
-    # Lacuna de telemetria simulada: ~1 a cada 7 dias o wearable fica 2 h sem sinal
+    # Simulated telemetry gap: ~1 in every 7 days the wearable goes 2 h without signal
     rng_dia = random.Random(_semente(id_ast, dia, "lacuna"))
     horas_sem_sinal: set = set()
     if rng_dia.random() < 1 / 7:
@@ -184,13 +184,13 @@ def planejar_dia(registro: Dict[str, Any]) -> Dict[str, Any]:
     acumulado = 0
     for h in range(24):
         if h in horas_sono:
-            perfil_id, atividade, descricao = "sono", "Sono", "Janela de sono"
+            perfil_id, atividade, descricao = "sono", "Sleep", "Sleep window"
         else:
-            perfil_id, atividade, descricao = rotina.get(h, ("repouso", "Pausa", "Tempo livre"))
+            perfil_id, atividade, descricao = rotina.get(h, ("repouso", "Break", "Free time"))
         minutos = treino_por_hora.get(h, 0) if h not in horas_sono else 0
         if perfil_id in ("resistido", "aerobico") and minutos < 20:
             perfil_id = "repouso"
-            atividade = f"{atividade} (não realizado)" if minutos == 0 else f"{atividade} (parcial)"
+            atividade = f"{atividade} (not done)" if minutos == 0 else f"{atividade} (partial)"
         acumulado += minutos
         agenda.append({
             "hora": h, "rotulo": f"{h:02d}:00", "perfil": perfil_id, "atividade": atividade,
@@ -208,16 +208,16 @@ def planejar_dia(registro: Dict[str, Any]) -> Dict[str, Any]:
         "pas": float(registro["pa_sistolica"]),
         "pad": float(registro["pa_diastolica"]),
         "temp": float(registro["temperatura_c"]),
-        # HRV individual simulada: quem tem FC de base mais baixa tende a ter HRV maior
+        # Simulated individual HRV: a lower baseline HR tends to mean a higher HRV
         "hrv_base": 55 + (70 - base_fc) * 1.2,
-        # Sono curto e humor baixo elevam o estresse e reduzem a HRV ao longo do dia
+        # Short sleep and low mood raise stress and lower HRV throughout the day
         "fator_hrv_dia": max(0.5, 1 - deficit_sono * 0.07 - max(0, 4 - humor) * 0.05),
         "ajuste_estresse": deficit_sono * 6 + (4 - humor) * 7 + (6 if ambiente == "Transito para Marte" else 0),
     }
 
 
 def _circadiano(h: int) -> Dict[str, float]:
-    """Ritmo circadiano: temperatura com pico ~17h e vale ~5h; FC acompanha; HRV maior à noite."""
+    """Circadian rhythm: temperature peaks ~17:00 and dips ~05:00; HR follows; HRV is higher at night."""
     c17 = math.cos(2 * math.pi * (h - 17) / 24)
     c16 = math.cos(2 * math.pi * (h - 16) / 24)
     c13 = math.cos(2 * math.pi * (h - 13) / 24)
@@ -225,7 +225,7 @@ def _circadiano(h: int) -> Dict[str, float]:
 
 
 def esperado_hora(plano: Dict[str, Any], h: int) -> Dict[str, float]:
-    """Valor esperado de cada sinal na hora h (sem ruído e sem eventos)."""
+    """Expected value of each signal at hour h (no noise and no events)."""
     p = PERFIS[plano["agenda"][h]["perfil"]]
     c = _circadiano(h)
     return {
@@ -246,8 +246,8 @@ def _alvo_eventos(
     desgaste: float,
 ) -> tuple:
     """
-    Efeito fisiológico-alvo dos eventos ativos na hora h sobre a leitura de h+1.
-    Desconforto (dor) ativa o simpático; contramedida recente acalma; fadiga acumulada eleva a FC de repouso.
+    Target physiological effect of the events active at hour h on the reading of h+1.
+    Discomfort (pain) activates the sympathetic system; a recent countermeasure calms it; accumulated fatigue raises resting HR.
     """
     alvo = {k: 0.0 for k in SINAIS}
     textos: List[str] = []
@@ -265,7 +265,7 @@ def _alvo_eventos(
         alvo["pa_diastolica"] += min(5.0, 0.6 * carga_dor)
         alvo["estresse_wearable"] += min(25.0, 4 * carga_dor)
         alvo["hrv_ms"] -= min(0.4, 0.035 * carga_dor)
-        textos.append(f"Dor relatada (carga {carga_dor:g}): FC e estresse sobem, HRV cai")
+        textos.append(f"Reported pain (load {carga_dor:g}): HR and stress go up, HRV drops")
 
     recentes = [c for c in contramedidas if 0 <= h - int(c.get("hora", 0)) <= 1]
     if recentes:
@@ -274,13 +274,13 @@ def _alvo_eventos(
         alvo["pa_sistolica"] -= 3 * n
         alvo["estresse_wearable"] -= 10 * n
         alvo["hrv_ms"] += 0.08 * n
-        textos.append(f"{len(recentes)} contramedida(s) recente(s): FC e estresse descem, HRV sobe")
+        textos.append(f"{len(recentes)} recent countermeasure(s): HR and stress go down, HRV rises")
 
     if desgaste > 5:
         alvo["fc_bpm"] += min(6.0, desgaste * 0.08)
         alvo["hrv_ms"] -= min(0.2, desgaste * 0.004)
         alvo["estresse_wearable"] += min(8.0, desgaste * 0.1)
-        textos.append(f"Fadiga acumulada ({desgaste:.0f}): FC de repouso mais alta")
+        textos.append(f"Accumulated fatigue ({desgaste:.0f}): higher resting HR")
     return alvo, textos
 
 
@@ -298,7 +298,7 @@ def _montar_ponto(
         k: esp[k] * (1 + residuo[k] + efeito[k]) if k == "hrv_ms" else esp[k] + residuo[k] + efeito[k]
         for k in SINAIS
     }
-    # Oscilação espontânea rara (~3% das horas fora do sono), para a curva não ser "perfeita"
+    # Rare spontaneous swing (~3% of non-sleep hours), so the curve is not "perfect"
     rng = random.Random(_semente(plano["id_astronauta"], plano["dia_missao"], h, "osc"))
     if a["perfil"] != "sono" and rng.random() < 0.03:
         valor["fc_bpm"] += rng.uniform(18, 26)
@@ -308,7 +308,7 @@ def _montar_ponto(
     if pico:
         antes = dict(valor)
         tipo_pico = _injetar_pico(valor, plano["ambiente"], a["perfil"], _semente(plano["id_astronauta"], plano["dia_missao"], h, "pico"))
-        # Metade do pico vira resíduo: na hora seguinte o sinal volta aos poucos, sem salto irreal
+        # Half of the spike becomes residual: in the next hour the signal comes back gradually, with no unrealistic jump
         for k in SINAIS:
             delta = valor[k] - antes[k]
             residuo[k] += 0.5 * (delta / esp[k] if k == "hrv_ms" and esp[k] else delta)
@@ -326,7 +326,7 @@ def _montar_ponto(
         "pico_simulado": tipo_pico,
         "esperado": {k: _arredondar(k, v) for k, v in esp.items()},
         "efeitos": textos,
-        # Estado interno do gerador (continuidade da próxima leitura)
+        # Internal generator state (continuity of the next reading)
         "estado_ar": {
             "residuo": {k: round(v, 4) for k, v in residuo.items()},
             "efeito": {k: round(v, 4) for k, v in efeito.items()},
@@ -343,7 +343,7 @@ def _montar_ponto(
 
 
 def iniciar_leitura(plano: Dict[str, Any], desgaste: float = 0.0, pico: bool = False) -> Dict[str, Any]:
-    """Primeira leitura do dia (00:00): estado basal, com ruído estacionário e a fadiga residual da véspera."""
+    """First reading of the day (00:00): basal state, with stationary noise and the previous day's residual fatigue."""
     rng = random.Random(_semente(plano["id_astronauta"], plano["dia_missao"], 0, "ar"))
     residuo = {k: SIGMA[k] * rng.gauss(0, 1) for k in SINAIS}
     efeito, textos = _alvo_eventos(0, [], [], desgaste)
@@ -352,15 +352,15 @@ def iniciar_leitura(plano: Dict[str, Any], desgaste: float = 0.0, pico: bool = F
 
 def gerar_proxima_leitura_horaria(estado: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Gera SÓ a leitura da hora h+1 a partir da leitura h (estado["anterior"]).
-    estado: plano (planejar_dia), anterior (ponto h), desconfortos [{hora, intensidade}],
-            contramedidas [{hora}], desgaste_acumulado (prontidão em h), pico (bool).
+    Generates ONLY the reading for hour h+1 from reading h (estado["anterior"]).
+    estado: plano (planejar_dia), anterior (point h), desconfortos [{hora, intensidade}],
+            contramedidas [{hora}], desgaste_acumulado (readiness at h), pico (bool).
     """
     plano = estado["plano"]
     anterior = estado["anterior"]
     h = int(anterior["hora"]) + 1
     if h > 23:
-        raise ValueError("O dia já tem a leitura das 23:00; vire para o próximo dia.")
+        raise ValueError("The day already has the 23:00 reading; roll over to the next day.")
     rng = random.Random(_semente(plano["id_astronauta"], plano["dia_missao"], h, "ar"))
     ar = anterior.get("estado_ar") or {"residuo": {k: 0.0 for k in SINAIS}, "efeito": {k: 0.0 for k in SINAIS}}
     inovacao = math.sqrt(1 - RHO_AR ** 2)
@@ -374,11 +374,11 @@ def gerar_proxima_leitura_horaria(estado: Dict[str, Any]) -> Dict[str, Any]:
 
 def gerar_dia(registro: Dict[str, Any], picos: Optional[List[int]] = None) -> Dict[str, Any]:
     """
-    SIMULAÇÃO ORIGINAL dos dias registrados na planilha (24 pontos de uma vez, como sempre foi).
-    Os dias NOVOS (criados depois do último dia da tabela) usam o gerador incremental
-    (iniciar_leitura + gerar_proxima_leitura_horaria), uma hora por vez.
-    Gera os 24 pontos horários a partir do registro diário (uma linha da base, como dict).
-    picos: horas em que um pico agudo de wearable deve ser injetado (botão "Simular Pico Wearable").
+    ORIGINAL SIMULATION of the days recorded in the dataset (24 points at once, as it always was).
+    NEW days (created after the last dataset day) use the incremental generator
+    (iniciar_leitura + gerar_proxima_leitura_horaria), one hour at a time.
+    Generates the 24 hourly points from the daily record (one dataset row, as a dict).
+    picos: hours at which an acute wearable spike must be injected ("Next reading with spike" button).
     """
     picos = sorted(set(h for h in (picos or []) if 0 <= h <= 23))
     id_ast = str(registro["id_astronauta"])
@@ -395,9 +395,9 @@ def gerar_dia(registro: Dict[str, Any], picos: Optional[List[int]] = None) -> Di
     base_fc = float(registro["base_fc_repouso"])
     base_sono = float(registro["base_sono"])
 
-    # HRV individual simulada: quem tem FC de base mais baixa tende a ter HRV maior
+    # Simulated individual HRV: a lower baseline HR tends to mean a higher HRV
     hrv_base = 55 + (70 - base_fc) * 1.2
-    # Sono curto e humor baixo elevam o estresse e reduzem a HRV ao longo do dia
+    # Short sleep and low mood raise stress and lower HRV throughout the day
     deficit_sono = max(0.0, base_sono - sono)
     ajuste_estresse = deficit_sono * 6 + (4 - humor) * 7 + (6 if ambiente == "Transito para Marte" else 0)
     fator_hrv_dia = max(0.5, 1 - deficit_sono * 0.07 - max(0, 4 - humor) * 0.05)
@@ -405,7 +405,7 @@ def gerar_dia(registro: Dict[str, Any], picos: Optional[List[int]] = None) -> Di
     horas_sono = _horas_de_sono(sono)
     treino_por_hora = _distribuir_treino(ambiente, int(registro["treino_resistido_min"]))
 
-    # Lacuna de telemetria simulada: ~1 a cada 7 dias o wearable fica 2 h sem sinal
+    # Simulated telemetry gap: ~1 in every 7 days the wearable goes 2 h without signal
     rng_dia = random.Random(_semente(id_ast, dia, "lacuna"))
     horas_sem_sinal: set = set()
     if rng_dia.random() < 1 / 7:
@@ -416,15 +416,15 @@ def gerar_dia(registro: Dict[str, Any], picos: Optional[List[int]] = None) -> Di
     acumulado = 0
     for h in range(24):
         if h in horas_sono:
-            perfil_id, atividade, descricao = "sono", "Sono", "Janela de sono"
+            perfil_id, atividade, descricao = "sono", "Sleep", "Sleep window"
         else:
-            perfil_id, atividade, descricao = rotina.get(h, ("repouso", "Pausa", "Tempo livre"))
+            perfil_id, atividade, descricao = rotina.get(h, ("repouso", "Break", "Free time"))
 
         minutos_treino = treino_por_hora.get(h, 0) if h not in horas_sono else 0
         if perfil_id in ("resistido", "aerobico"):
             if minutos_treino < 20:
                 perfil_id = "repouso"
-                atividade = f"{atividade} (não realizado)" if minutos_treino == 0 else f"{atividade} (parcial)"
+                atividade = f"{atividade} (not done)" if minutos_treino == 0 else f"{atividade} (partial)"
         acumulado += minutos_treino
 
         p = PERFIS[perfil_id]
@@ -448,7 +448,7 @@ def gerar_dia(registro: Dict[str, Any], picos: Optional[List[int]] = None) -> Di
             "hrv_ms": esperado["hrv_ms"] * (1 + rng.gauss(0, 0.08)),
             "estresse_wearable": esperado["estresse_wearable"] + rng.gauss(0, 6),
         }
-        # Oscilação espontânea rara (~3% das horas fora do sono), para a curva não ser "perfeita"
+        # Rare spontaneous swing (~3% of non-sleep hours), so the curve is not "perfect"
         if h not in horas_sono and rng.random() < 0.03:
             valor["fc_bpm"] += rng.uniform(18, 26)
             valor["hrv_ms"] *= 0.6
@@ -487,18 +487,18 @@ def gerar_dia(registro: Dict[str, Any], picos: Optional[List[int]] = None) -> Di
         "horas_sem_sinal": sorted(horas_sem_sinal - set(picos)),
         "picos": picos,
         "pontos": pontos,
-        "nota": "Telemetria horária SIMULADA a partir do registro diário; limiares de demonstração (a confirmar).",
+        "nota": "SIMULATED hourly telemetry derived from the daily record; demo thresholds (to be confirmed).",
     }
 
 
 def linha_do_tempo(telemetria: Dict[str, Any], hora: int) -> List[Dict[str, Any]]:
-    """Pontos do início do dia operacional (00:00) até a hora pedida, em ordem cronológica (inclusive)."""
+    """Points from the start of the operational day (00:00) to the requested hour, in chronological order (inclusive)."""
     hora = max(0, min(23, int(hora)))
     return sorted((p for p in telemetria["pontos"] if p["hora"] <= hora), key=lambda p: p["hora"])
 
 
 def _injetar_pico(valor: Dict[str, float], ambiente: str, perfil_id: str, semente: int) -> str:
-    """Anomalia aguda na hora: escolhe o tipo de forma determinística (EVA favorece dessaturação)."""
+    """Acute anomaly at the hour: picks the type deterministically (EVA favors desaturation)."""
     rng = random.Random(semente)
     if perfil_id == "eva" or (ambiente == "Base Marciana" and rng.random() < 0.4):
         tipo = "dessaturacao"
@@ -540,8 +540,8 @@ def _arredondar(chave: str, v: float) -> float:
 
 def _avaliar_hora(ponto: Dict[str, Any], esperado: Dict[str, float], perfil_id: str) -> Dict[str, Any]:
     """
-    Limiares horários (de demonstração). Compara com o ESPERADO para a atividade daquela hora,
-    para que FC alta durante o treino não vire alerta, mas FC alta em repouso sim.
+    Hourly thresholds (demo). Compares with what is EXPECTED for that hour's activity,
+    so a high HR during a workout does not become an alert, but a high HR at rest does.
     """
     alertas: List[Dict[str, Any]] = []
 
@@ -550,40 +550,40 @@ def _avaliar_hora(ponto: Dict[str, Any], esperado: Dict[str, float], perfil_id: 
 
     fc, fc_esp = ponto["fc_bpm"], esperado["fc_bpm"]
     if fc - fc_esp >= 35 or fc >= 175:
-        alerta("fc_bpm", 3, f"FC {fc} bpm, {int(fc - fc_esp)} acima do esperado para a atividade")
+        alerta("fc_bpm", 3, f"HR {fc} bpm, {int(fc - fc_esp)} above expected for the activity")
     elif fc - fc_esp >= 20:
-        alerta("fc_bpm", 2, f"FC {fc} bpm, {int(fc - fc_esp)} acima do esperado para a atividade")
+        alerta("fc_bpm", 2, f"HR {fc} bpm, {int(fc - fc_esp)} above expected for the activity")
 
     pas, pas_esp = ponto["pa_sistolica"], esperado["pa_sistolica"]
     if pas - pas_esp >= 28 or pas >= 180:
-        alerta("pa_sistolica", 3, f"PA sistólica {pas} mmHg muito acima do esperado")
+        alerta("pa_sistolica", 3, f"Systolic BP {pas} mmHg far above expected")
     elif pas - pas_esp >= 18 or (perfil_id in ("sono", "repouso", "lazer") and pas >= 140):
-        alerta("pa_sistolica", 2, f"PA sistólica {pas} mmHg acima do esperado")
+        alerta("pa_sistolica", 2, f"Systolic BP {pas} mmHg above expected")
 
     spo2 = ponto["spo2_pct"]
     if spo2 < 90:
-        alerta("spo2_pct", 3, f"SpO₂ {spo2}% (abaixo de 90%)")
+        alerta("spo2_pct", 3, f"SpO₂ {spo2}% (below 90%)")
     elif spo2 < 94:
-        alerta("spo2_pct", 2, f"SpO₂ {spo2}% (abaixo de 94%)")
+        alerta("spo2_pct", 2, f"SpO₂ {spo2}% (below 94%)")
 
-    # Temperatura corrigida pelo efeito esperado da atividade
+    # Temperature corrected for the expected effect of the activity
     temp_corrigida = ponto["temperatura_c"] - PERFIS[perfil_id]["temp"]
     if temp_corrigida >= 38.1:
-        alerta("temperatura_c", 3, f"Temperatura {ponto['temperatura_c']} °C (febre)")
+        alerta("temperatura_c", 3, f"Temperature {ponto['temperatura_c']} °C (fever)")
     elif temp_corrigida >= 37.5:
-        alerta("temperatura_c", 2, f"Temperatura {ponto['temperatura_c']} °C (subfebril)")
+        alerta("temperatura_c", 2, f"Temperature {ponto['temperatura_c']} °C (low-grade fever)")
 
     hrv, hrv_esp = ponto["hrv_ms"], esperado["hrv_ms"]
     if hrv < hrv_esp * 0.35:
-        alerta("hrv_ms", 3, f"HRV {hrv} ms, muito abaixo do esperado ({int(hrv_esp)} ms)")
+        alerta("hrv_ms", 3, f"HRV {hrv} ms, far below expected ({int(hrv_esp)} ms)")
     elif hrv < hrv_esp * 0.5:
-        alerta("hrv_ms", 2, f"HRV {hrv} ms, abaixo do esperado ({int(hrv_esp)} ms)")
+        alerta("hrv_ms", 2, f"HRV {hrv} ms, below expected ({int(hrv_esp)} ms)")
 
     est = ponto["estresse_wearable"]
     if est >= 90:
-        alerta("estresse_wearable", 3, f"Estresse {est}/100")
+        alerta("estresse_wearable", 3, f"Stress {est}/100")
     elif est >= 75:
-        alerta("estresse_wearable", 2, f"Estresse {est}/100")
+        alerta("estresse_wearable", 2, f"Stress {est}/100")
 
     partes: List[str] = []
     for a in alertas:

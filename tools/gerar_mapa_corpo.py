@@ -1,23 +1,23 @@
 """
-Gera as imagens do mapa corporal e as 15 regiões anatômicas por vista (frente/costas) para os
-personagens masculino (M) e feminino (F).
+Generates the body map images and the 15 anatomical regions per view (front/back) for the
+male (M) and female (F) characters.
 
-Entrada:  tools/imagens_originais/ (um par frente/costas por personagem, ver MODELOS)
-Saída:    frontend/src/assets/body/astronauta_{masculino,feminino}_{frente,costas}.png
+Input:    tools/imagens_originais/ (one front/back pair per character, see MODELOS)
+Output:   frontend/src/assets/body/astronauta_{masculino,feminino}_{frente,costas}.png
           frontend/src/components/corpoRegioes.ts  (MAPA_CORPO[genero][vista].regioes -> id, nome, d, anchor)
 
-Etapas:
-1. Fundo: usa a transparência do PNG (ou remove fundo claro, se vier com fundo).
-2. Limpeza de logotipos: remove o logotipo da NASA e bandeiras dos EUA nas posições da tabela LOGOS
-   (cv2.inpaint com o tecido ao redor) e aplica o patch da bandeira do Brasil no peito da astronauta.
-3. Recorte e escala.
-4. Marcos lidos da silhueta (canal alfa) e das cores do traje: queixo, gola, axilas, cinto preto, punhos
-   (fim da manga laranja), virilha e topo das botas.
-5. Rotulagem linha a linha -> uma máscara por região -> fechamento morfológico -> contorno ->
-   cv2.approxPolyDP (polígono suave) -> <path>. Âncora = centroide real (momentos) da região.
+Steps:
+1. Background: uses the PNG transparency (or removes a light background, if the image has one).
+2. Logo cleanup: removes the NASA logo and US flags at the positions in the LOGOS table
+   (cv2.inpaint with the surrounding fabric) and applies the Brazil flag patch on the astronaut's chest.
+3. Crop and scale.
+4. Landmarks read from the silhouette (alpha channel) and the suit colors: chin, collar, armpits, black belt, cuffs
+   (end of the orange sleeve), crotch and top of the boots.
+5. Row-by-row labeling -> one mask per region -> morphological closing -> contour ->
+   cv2.approxPolyDP (smooth polygon) -> <path>. Anchor = real centroid (moments) of the region.
 
-Rodar (da raiz do projeto):  backend/venv/Scripts/python.exe tools/gerar_mapa_corpo.py
-Requer: pillow, numpy, opencv-python-headless (instalados no venv do backend).
+Run (from the project root):  backend/venv/Scripts/python.exe tools/gerar_mapa_corpo.py
+Requires: pillow, numpy, opencv-python-headless (installed in the backend venv).
 """
 import os
 from typing import Dict, List, Tuple
@@ -31,10 +31,10 @@ ORIGEM = os.path.join(RAIZ, "tools", "imagens_originais")
 DESTINO_IMG = os.path.join(RAIZ, "frontend", "src", "assets", "body")
 DESTINO_TS = os.path.join(RAIZ, "frontend", "src", "components", "corpoRegioes.ts")
 
-ALTURA_FINAL = 640  # só reduz imagens maiores; nunca amplia
+ALTURA_FINAL = 640  # only shrinks larger images; never enlarges
 COR_SENTINELA = (255, 0, 255)
 
-# genero -> (arquivo de frente, arquivo de costas, nome do personagem nos assets)
+# gender -> (front file, back file, character name in the assets)
 MODELOS = {
     "M": ("astronauta_frente_sem_fundo.png", "astronauta_costas_sem_fundo.png", "masculino"),
     "F": ("astronauta_feminina_frente_sem_fundo.png", "astronauta_feminina_costas_sem_fundo.png", "feminino"),
@@ -42,28 +42,28 @@ MODELOS = {
 
 NOMES = {
     "frente": {
-        "cabeca": "Cabeça", "pescoco": "Pescoço",
-        "ombro_dir": "Ombro Direito", "ombro_esq": "Ombro Esquerdo",
-        "torax": "Tórax / Peito", "abdomen": "Abdômen", "pelve": "Pelve / Quadril",
-        "braco_dir": "Braço Direito", "braco_esq": "Braço Esquerdo",
-        "mao_dir": "Mão Direita", "mao_esq": "Mão Esquerda",
-        "perna_dir": "Perna Direita", "perna_esq": "Perna Esquerda",
-        "pe_dir": "Pé Direito", "pe_esq": "Pé Esquerdo",
+        "cabeca": "Head", "pescoco": "Neck",
+        "ombro_dir": "Right Shoulder", "ombro_esq": "Left Shoulder",
+        "torax": "Thorax / Chest", "abdomen": "Abdomen", "pelve": "Pelvis / Hip",
+        "braco_dir": "Right Arm", "braco_esq": "Left Arm",
+        "mao_dir": "Right Hand", "mao_esq": "Left Hand",
+        "perna_dir": "Right Leg", "perna_esq": "Left Leg",
+        "pe_dir": "Right Foot", "pe_esq": "Left Foot",
     },
     "costas": {
-        "cabeca": "Cabeça (posterior)", "nuca": "Nuca",
-        "ombro_dir": "Ombro Direito", "ombro_esq": "Ombro Esquerdo",
-        "costas_sup": "Costas / Coluna Torácica", "lombar": "Coluna Lombar", "pelve": "Glúteos / Pelve",
-        "braco_dir": "Braço Direito", "braco_esq": "Braço Esquerdo",
-        "mao_dir": "Mão Direita", "mao_esq": "Mão Esquerda",
-        "perna_dir": "Perna Direita", "perna_esq": "Perna Esquerda",
-        "pe_dir": "Pé Direito", "pe_esq": "Pé Esquerdo",
+        "cabeca": "Head (back)", "nuca": "Nape",
+        "ombro_dir": "Right Shoulder", "ombro_esq": "Left Shoulder",
+        "costas_sup": "Back / Thoracic Spine", "lombar": "Lumbar Spine", "pelve": "Glutes / Pelvis",
+        "braco_dir": "Right Arm", "braco_esq": "Left Arm",
+        "mao_dir": "Right Hand", "mao_esq": "Left Hand",
+        "perna_dir": "Right Leg", "perna_esq": "Left Leg",
+        "pe_dir": "Right Foot", "pe_esq": "Left Foot",
     },
 }
 
 
 # ---------------------------------------------------------------------------
-# 1. Fundo
+# 1. Background
 # ---------------------------------------------------------------------------
 
 def remover_fundo(caminho: str) -> Image.Image:
@@ -104,13 +104,13 @@ def recortar(img: Image.Image) -> Image.Image:
 
 
 # ---------------------------------------------------------------------------
-# 2. Limpeza de logotipos (NASA e bandeira dos EUA) e patch do Brasil
+# 2. Logo cleanup (NASA and US flag) and Brazil patch
 # ---------------------------------------------------------------------------
 
-# Posições (em pixels das imagens ORIGINAIS) dos itens a limpar. Levantadas uma vez por inspeção visual;
-# se as imagens de origem mudarem, atualize esta tabela.
-#   nasa: (cx, cy, raio) do logotipo circular | eua: (x0, y0, x1, y1) de bandeiras dos EUA
-#   brasil_no_peito: caixa da bandeira dos EUA do peito que recebe o patch do Brasil
+# Positions (in pixels of the ORIGINAL images) of the items to clean. Collected once by visual inspection;
+# if the source images change, update this table.
+#   nasa: (cx, cy, radius) of the circular logo | eua: (x0, y0, x1, y1) of US flags
+#   brasil_no_peito: box of the chest US flag that receives the Brazil patch
 LOGOS = {
     "astronauta_frente_sem_fundo.png": {"nasa": [(317.5, 120.5, 10)], "eua": []},
     "astronauta_costas_sem_fundo.png": {"nasa": [(334.5, 98.0, 15)], "eua": [(282, 87, 296, 107)]},
@@ -121,7 +121,7 @@ LOGOS = {
     },
     "astronauta_feminina_costas_sem_fundo.png": {"nasa": [(334.0, 101.0, 15.5)], "eua": [(284, 88, 298, 109)]},
 }
-# Patch da bandeira do Brasil no peito do personagem masculino (imagem original de frente)
+# Brazil flag patch on the male character's chest (original front image)
 CAIXA_PATCH_BRASIL = ("astronauta_frente_sem_fundo.png", (340, 113, 361, 127))
 
 
@@ -131,7 +131,7 @@ def extrair_patch_brasil() -> Image.Image:
 
 
 def limpar_logos(rgba: Image.Image, arquivo: str, patch_brasil: Image.Image) -> Image.Image:
-    """Apaga o logotipo da NASA e bandeiras dos EUA (inpaint com o tecido ao redor); aplica o patch do Brasil."""
+    """Erases the NASA logo and US flags (inpaint with the surrounding fabric); applies the Brazil patch."""
     itens = LOGOS.get(arquivo)
     if not itens:
         return rgba
@@ -157,7 +157,7 @@ def limpar_logos(rgba: Image.Image, arquivo: str, patch_brasil: Image.Image) -> 
 
 
 # ---------------------------------------------------------------------------
-# 3. Segmentação anatômica
+# 3. Anatomical segmentation
 # ---------------------------------------------------------------------------
 
 def trechos(linha: np.ndarray, minimo: int = 2) -> List[Tuple[int, int]]:
@@ -190,15 +190,15 @@ def segmentar(img: Image.Image, vista: str) -> Tuple[Dict[str, dict], dict]:
         t = linhas[y]
         return (t[-1][1] - t[0][0] + 1) if t else 0
 
-    # Pescoço (linha mais estreita entre cabeça e ombros), queixo e gola do traje
+    # Neck (narrowest row between head and shoulders), chin and suit collar
     pescoco_min = min(range(topo + int(alt * 0.08), topo + int(alt * 0.22)), key=largura)
     larg_pesc = largura(pescoco_min)
-    # Queixo pela proporção anatômica (cabeça ≈ 1/9 da altura): a largura engana quando há cabelo preso/solto
+    # Chin by anatomical proportion (head ≈ 1/9 of the height): width is misleading when hair is tied up/loose
     queixo = topo + int(round(alt * 0.11))
     gola = next((y for y in range(pescoco_min, base) if largura(y) >= larg_pesc * 1.45), pescoco_min + 6)
     gola = min(max(gola, queixo + int(alt * 0.02)), queixo + int(alt * 0.06))
 
-    # Axila e mãos (braços separados do tronco), limites do tronco
+    # Armpit and hands (arms separated from the torso), torso limits
     axila = next(y for y in range(gola + 5, base) if len(linhas[y]) >= 3)
     fim_maos = max(y for y in range(axila, topo + int(alt * 0.75)) if len(linhas[y]) >= 3)
     meio = linhas[axila][len(linhas[axila]) // 2]
@@ -206,11 +206,11 @@ def segmentar(img: Image.Image, vista: str) -> Tuple[Dict[str, dict], dict]:
     centro = (tronco_esq + tronco_dir) / 2
     larg_tronco = tronco_dir - tronco_esq
 
-    # Cinto preto: faixa de linhas escuras na largura do tronco, entre axila e quadril
+    # Black belt: band of dark rows across the torso width, between armpit and hip
     xs0, xs1 = int(tronco_esq + larg_tronco * 0.12), int(tronco_dir - larg_tronco * 0.12)
     faixa_escura = [y for y in range(axila, topo + int(alt * 0.65)) if escuro[y, xs0:xs1].mean() > 0.5]
     if faixa_escura:
-        # maior bloco contínuo de linhas escuras
+        # largest continuous block of dark rows
         blocos, atual = [], [faixa_escura[0]]
         for y in faixa_escura[1:]:
             if y == atual[-1] + 1:
@@ -227,14 +227,14 @@ def segmentar(img: Image.Image, vista: str) -> Tuple[Dict[str, dict], dict]:
     meio_peito = gola + int((cinto_topo - gola) * 0.55)
     abaixo_cinto = cinto_base + 2
 
-    # Virilha: pernas se separam (descarta trechos das mãos ao lado das coxas)
+    # Crotch: legs split apart (discards the hand stretches beside the thighs)
     def trechos_corpo(y):
         return [t for t in linhas[y] if tronco_esq - 6 <= (t[0] + t[1]) / 2 <= tronco_dir + 6]
 
     virilha = next(y for y in range(abaixo_cinto + 3, base) if len(trechos_corpo(y)) >= 2)
-    dv = max(4, int(alt * 0.05))  # profundidade do "V" dos vincos da virilha
+    dv = max(4, int(alt * 0.05))  # depth of the "V" of the crotch creases
 
-    # Topo das botas: primeira linha (abaixo da virilha) em que as pernas deixam de ser laranja
+    # Top of the boots: first row (below the crotch) where the legs stop being orange
     inicio_busca = virilha + int((base - virilha) * 0.4)
     bota = next(
         (y for y in range(inicio_busca, base)
@@ -242,7 +242,7 @@ def segmentar(img: Image.Image, vista: str) -> Tuple[Dict[str, dict], dict]:
         base - int(alt * 0.12),
     )
 
-    # Punhos: fim da manga laranja em cada braço (a mão e o punho não são laranja)
+    # Cuffs: end of the orange sleeve on each arm (hand and cuff are not orange)
     def punho(lado: str) -> int:
         for y in range(axila + int((fim_maos - axila) * 0.4), fim_maos):
             t = linhas[y]
@@ -255,7 +255,7 @@ def segmentar(img: Image.Image, vista: str) -> Tuple[Dict[str, dict], dict]:
 
     punho_esq_tela, punho_dir_tela = punho("esq"), punho("dir")
 
-    # Lado anatômico de cada lado da tela: na frente a esquerda da tela é o lado DIREITO do astronauta
+    # Anatomical side of each screen side: in the front view the left of the screen is the astronaut's RIGHT side
     lado_tela_esq = "dir" if vista == "frente" else "esq"
     lado_tela_dir = "esq" if vista == "frente" else "dir"
     reg_pescoco = "pescoco" if vista == "frente" else "nuca"
@@ -273,7 +273,7 @@ def segmentar(img: Image.Image, vista: str) -> Tuple[Dict[str, dict], dict]:
                 elif y < gola:
                     nome = reg_pescoco
                 elif y < axila:
-                    # acima da axila: fora dos limites do tronco é ombro
+                    # above the armpit: outside the torso limits is shoulder
                     nome = f"ombro_{lado}" if (x < tronco_esq or x > tronco_dir) else reg_alto if y < meio_peito else reg_meio
                 else:
                     no_braco = not (tronco_esq - 6 <= (x0 + x1) / 2 <= tronco_dir + 6) and len(linhas[y]) >= 3
@@ -285,7 +285,7 @@ def segmentar(img: Image.Image, vista: str) -> Tuple[Dict[str, dict], dict]:
                     elif y < abaixo_cinto:
                         nome = reg_meio
                     else:
-                        # vincos diagonais: o "V" da pelve desce até a virilha no centro
+                        # diagonal creases: the pelvis "V" goes down to the crotch at the center
                         dist = min(1.0, abs(x - centro) / max(1.0, larg_tronco / 2))
                         limite = virilha - dv * dist
                         if y < limite:
@@ -300,7 +300,7 @@ def segmentar(img: Image.Image, vista: str) -> Tuple[Dict[str, dict], dict]:
     for rid, nome_pt in NOMES[vista].items():
         mascara = (rotulo == rid).astype(np.uint8)
         if mascara.sum() < 5:
-            print(f"   ! região vazia: {rid}")
+            print(f"   ! empty region: {rid}")
             continue
         mascara = cv2.morphologyEx(mascara, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
         contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -326,7 +326,7 @@ def segmentar(img: Image.Image, vista: str) -> Tuple[Dict[str, dict], dict]:
 
 
 # ---------------------------------------------------------------------------
-# 4. Geração
+# 4. Generation
 # ---------------------------------------------------------------------------
 
 def main():
@@ -341,13 +341,13 @@ def main():
             img = recortar(rgba)
             img.save(os.path.join(DESTINO_IMG, f"astronauta_{personagem}_{vista}.png"), optimize=True)
             regioes, marcos = segmentar(img, vista)
-            print(f" {genero} {vista}: {img.width}x{img.height} | {len(regioes)} regiões | {marcos}")
+            print(f" {genero} {vista}: {img.width}x{img.height} | {len(regioes)} regions | {marcos}")
             mapa[genero][vista] = {"largura": img.width, "altura": img.height, "regioes": regioes}
 
     linhas = [
-        "// Arquivo GERADO por tools/gerar_mapa_corpo.py — não editar à mão.",
-        "// 15 regiões anatômicas por vista, para o personagem masculino (M) e feminino (F).",
-        "// d = contorno <path>; anchor = centroide real da região (para linhas, marcadores e retículos).",
+        "// File GENERATED by tools/gerar_mapa_corpo.py. Do not edit by hand.",
+        "// 15 anatomical regions per view, for the male (M) and female (F) characters.",
+        "// d = <path> outline; anchor = real centroid of the region (for lines, markers and reticles).",
         "",
         'export type Genero = "M" | "F";',
         'export type Vista = "frente" | "costas";',

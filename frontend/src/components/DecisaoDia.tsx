@@ -1,16 +1,17 @@
-// Primeira dobra em dias de alerta: o que aconteceu, qual a ação indicada e quais dados sustentam o alerta.
-// Em dias de rotina o topo volta a mostrar as Missões do dia (metas e XP).
+// First fold on alert days: what happened, the recommended action and the data supporting the alert.
+// On routine days the top goes back to the short routine strip (goals and XP live in Daily missions).
 import { AlertTriangle, ArrowDownRight, Earth, Satellite, ShieldAlert } from "lucide-react";
+import { tCategorias, tStatus } from "../i18n";
 import type { Motivo } from "./motivosAlerta";
 
 export interface EvidenciaAlerta extends Motivo {
-  parte: string; // "Cabeça", "Peito"... (onde o mapa corporal mostra)
+  parte: string; // "Head", "Chest"... (where the body map shows it)
 }
 
 const STATUS_EVA = {
-  INAPTO: { texto: "Atividade extraveicular (EVA) suspensa", cor: "text-red-200 border-red-500/70 bg-red-500/15" },
-  RESTRICAO: { texto: "Atividade extraveicular (EVA) restrita: só esforço leve", cor: "text-amber-200 border-amber-500/70 bg-amber-500/10" },
-  APTO: { texto: "Atividade extraveicular (EVA) liberada", cor: "text-emerald-200 border-emerald-500/60 bg-emerald-500/10" },
+  INAPTO: { texto: "Extravehicular activity (EVA) suspended", cor: "text-red-200 border-red-500/70 bg-red-500/15" },
+  RESTRICAO: { texto: "Extravehicular activity (EVA) restricted: light exertion only", cor: "text-amber-200 border-amber-500/70 bg-amber-500/10" },
+  APTO: { texto: "Extravehicular activity (EVA) cleared", cor: "text-emerald-200 border-emerald-500/60 bg-emerald-500/10" },
 } as const;
 
 export function DecisaoDia({
@@ -29,7 +30,7 @@ export function DecisaoDia({
   children,
 }: {
   codigo: number;
-  status?: string; // ex.: "CRITICO"
+  status?: string; // e.g. "CRITICO"
   score?: number | null;
   resumo?: string;
   categorias: string;
@@ -40,14 +41,14 @@ export function DecisaoDia({
   escalonamento: string;
   evidencias: EvidenciaAlerta[];
   onVerProtocolo: () => void;
-  children?: React.ReactNode; // seletor de dia (à direita)
+  children?: React.ReactNode; // day selector (on the right)
 }) {
   const critico = codigo >= 3;
   const cor = critico
     ? { borda: "border-red-500/70", fundo: "bg-red-950/40", texto: "text-[#EF4444]" }
     : { borda: "border-amber-500/60", fundo: "bg-amber-950/25", texto: "text-[#FBBF24]" };
   const eva = statusEva ? STATUS_EVA[statusEva] : null;
-  const rotulo = (critico ? "Crítico" : "Atenção") + (score !== undefined && score !== null ? ` · ${score}/100` : "");
+  const rotulo = (critico ? "Critical" : "Warning") + (score !== undefined && score !== null ? ` · ${score}/100` : "");
 
   return (
     <section
@@ -59,23 +60,23 @@ export function DecisaoDia({
         <div className="min-w-0 flex-1">
           <h2 id="titulo-decisao" className={`flex flex-wrap items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.18em] ${cor.texto}`}>
             <ShieldAlert className="h-4 w-4" />
-            Decisão do dia
-            <span className={`rounded border px-1.5 py-0.5 text-[10px] tracking-wider ${cor.borda}`} title={status}>
+            Today's decision
+            <span className={`rounded border px-1.5 py-0.5 text-[10px] tracking-wider ${cor.borda}`} title={tStatus(status)}>
               {rotulo}
             </span>
           </h2>
 
           <div className="mt-3 grid gap-4 md:grid-cols-3">
-            {/* 1. O que aconteceu */}
+            {/* 1. What happened */}
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-wider text-slate-400">1 · O que aconteceu</p>
-              <p className="mt-1 text-sm font-semibold leading-snug text-white">{resumo || `Alerta na triagem do dia: ${categorias}`}</p>
-              <p className="mt-1 font-mono text-[10px] text-slate-400">Categorias: {categorias}</p>
+              <p className="font-mono text-[10px] uppercase tracking-wider text-slate-400">1 · What happened</p>
+              <p className="mt-1 text-sm font-semibold leading-snug text-white">{resumo || `Alert in today's triage: ${tCategorias(categorias)}`}</p>
+              <p className="mt-1 font-mono text-[10px] text-slate-400">Categories: {tCategorias(categorias)}</p>
             </div>
 
-            {/* 2. Ação indicada */}
+            {/* 2. Recommended action */}
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-wider text-slate-400">2 · Ação indicada</p>
+              <p className="font-mono text-[10px] uppercase tracking-wider text-slate-400">2 · Recommended action</p>
               {eva && (
                 <p className={`mt-1 inline-block rounded border px-2 py-0.5 text-xs font-semibold ${eva.cor}`} title={motivosEva.join("\n")}>
                   {statusEva === "INAPTO" ? "⛔ " : ""}
@@ -112,13 +113,13 @@ export function DecisaoDia({
                 onClick={onVerProtocolo}
                 className="mt-2 flex items-center gap-1 rounded border border-cyan-700 px-2 py-1 font-mono text-[10px] uppercase text-cyan-300 hover:bg-cyan-500/10"
               >
-                Protocolo completo <ArrowDownRight className="h-3 w-3" />
+                Full protocol <ArrowDownRight className="h-3 w-3" />
               </button>
             </div>
 
-            {/* 3. Dados que sustentam o alerta */}
+            {/* 3. Data supporting the alert */}
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-wider text-slate-400">3 · Dados que sustentam</p>
+              <p className="font-mono text-[10px] uppercase tracking-wider text-slate-400">3 · Supporting data</p>
               {evidencias.length ? (
                 <ul className="mt-1 space-y-1">
                   {evidencias.map((e) => (
@@ -133,7 +134,7 @@ export function DecisaoDia({
                   ))}
                 </ul>
               ) : (
-                <p className="mt-1 text-xs text-slate-400">Indicadores do dia fora da linha de base ({categorias}).</p>
+                <p className="mt-1 text-xs text-slate-400">Today's indicators are off baseline ({tCategorias(categorias)}).</p>
               )}
             </div>
           </div>

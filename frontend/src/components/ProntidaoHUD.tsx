@@ -1,6 +1,7 @@
-// Barra de Prontidão de Missão (HUD): aptidão EVA em 20 segmentos, composição do score cumulativo
-// (Base − Desgaste acumulado − Penalidade aguda, com a Recuperação do dia), curva 00:00→agora,
-// XP de mitigação e sinais vitais resumidos.
+// Mission Readiness bar (HUD): EVA fitness in 20 segments, breakdown of the cumulative score
+// (Base − Accumulated wear − Acute penalty, with the day's Recovery), 00:00→now curve,
+// mitigation XP and summarized vital signs.
+import { tEstado, tNivelEva } from "../i18n";
 import type { PontoProntidao, ProntidaoCumulativa } from "../types";
 
 const COR = {
@@ -15,9 +16,9 @@ export interface SinalResumo {
   alerta?: boolean;
 }
 
-const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString("pt-BR");
+const fmt = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-US");
 
-/** Curva de prontidão do dia (00:00–23:00): linha até a hora atual, faixas de 75% e 45% ao fundo. */
+/** Readiness curve of the day (00:00–23:00): line up to the current hour, 75% and 45% bands in the background. */
 function CurvaDia({ historico, cor }: { historico: PontoProntidao[]; cor: string }) {
   const L = 168;
   const A = 34;
@@ -27,8 +28,8 @@ function CurvaDia({ historico, cor }: { historico: PontoProntidao[]; cor: string
   const ultimo = historico[historico.length - 1];
   const contramedidas = historico.filter((p) => p.estado === "contramedida");
   return (
-    <svg width={L} height={A} viewBox={`0 0 ${L} ${A}`} className="shrink-0" role="img" aria-label="Curva de prontidão ao longo do dia">
-      <title>{historico.map((p) => `${p.rotulo}  ${Math.round(p.prontidao)}%  (desgaste ${fmt(p.desgaste)}, ${p.estado})`).join("\n")}</title>
+    <svg width={L} height={A} viewBox={`0 0 ${L} ${A}`} className="shrink-0" role="img" aria-label="Readiness curve over the day">
+      <title>{historico.map((p) => `${p.rotulo}  ${Math.round(p.prontidao)}%  (wear ${fmt(p.desgaste)}, ${tEstado(p.estado)})`).join("\n")}</title>
       <rect x={0} y={0} width={L} height={A} rx={2} className="fill-slate-900/70" />
       <line x1={2} x2={L - 2} y1={y(75)} y2={y(75)} stroke="#34D399" strokeOpacity={0.25} strokeDasharray="2 3" />
       <line x1={2} x2={L - 2} y1={y(45)} y2={y(45)} stroke="#EF4444" strokeOpacity={0.25} strokeDasharray="2 3" />
@@ -43,7 +44,7 @@ function CurvaDia({ historico, cor }: { historico: PontoProntidao[]; cor: string
 
 export interface Sincronia {
   estado: "ok" | "coletando" | "erro";
-  texto: string; // ex.: "Sincronizado • Última leitura: 07:00"
+  texto: string; // e.g. "Synced • Last reading: 07:00"
 }
 
 const COR_SYNC = {
@@ -58,51 +59,51 @@ export function ProntidaoHUD({ prontidao, xp, ganho, sinais, sincronia, onVerPro
   ganho: { id: number; texto: string } | null;
   sinais: SinalResumo[];
   sincronia: Sincronia;
-  onVerProtocolo?: () => void; // leva ao painel de protocolo (motivo e contramedidas)
+  onVerProtocolo?: () => void; // goes to the protocol panel (reason and countermeasures)
 }) {
   const cor = COR[prontidao?.faixa ?? "apto"];
   const aptidao = prontidao?.aptidao_eva ?? 0;
   const acesos = Math.round(aptidao / 5);
   const detalhe = prontidao
     ? [
-        `Prontidão ${prontidao.prontidao_atual}% às ${String(prontidao.hora).padStart(2, "0")}:00 (estado: ${prontidao.estado_atual})`,
-        `Base do dia ${fmt(prontidao.base.valor)}%`,
+        `Readiness ${prontidao.prontidao_atual}% at ${String(prontidao.hora).padStart(2, "0")}:00 (state: ${tEstado(prontidao.estado_atual)})`,
+        `Daily base ${fmt(prontidao.base.valor)}%`,
         ...prontidao.base.fatores.map((f) => `   ${fmt(f.pontos)}  ${f.rotulo}`),
-        `Desgaste acumulado −${fmt(prontidao.desgaste_acumulado)} (esforço ${fmt(prontidao.desgaste_esforco)} • carga ${fmt(prontidao.desgaste_carga)})`,
-        `Recuperação no dia +${fmt(prontidao.recuperacao_acumulada)}`,
-        `Penalidade aguda −${fmt(prontidao.penalidade_aguda)}`,
+        `Accumulated wear −${fmt(prontidao.desgaste_acumulado)} (exertion ${fmt(prontidao.desgaste_esforco)} • load ${fmt(prontidao.desgaste_carga)})`,
+        `Recovery today +${fmt(prontidao.recuperacao_acumulada)}`,
+        `Acute penalty −${fmt(prontidao.penalidade_aguda)}`,
         ...prontidao.fatores_agudos.map((f) => `   ${fmt(f.pontos)}  ${f.rotulo}`),
-        ...(prontidao.bloqueios.length ? ["Limites de EVA:", ...prontidao.bloqueios.map((b) => `   ${b.nivel}: ${b.motivo}`)] : []),
+        ...(prontidao.bloqueios.length ? ["EVA limits:", ...prontidao.bloqueios.map((b) => `   ${tNivelEva(b.nivel)}: ${b.motivo}`)] : []),
         prontidao.nota,
       ].join("\n")
     : "";
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-      {/* Barra segmentada (Aptidão EVA) */}
+      {/* Segmented bar (EVA fitness) */}
       <div className="relative min-w-64 flex-1">
         <div className="mb-1 flex flex-wrap items-baseline gap-x-2 font-mono text-[10px] uppercase tracking-[0.2em]">
-          {/* Primeira aparição da sigla na tela: por extenso */}
+          {/* First appearance of the acronym on screen: spelled out */}
           <span className="text-slate-400">
-            Aptidão para atividade extraveicular <span className="text-slate-300">(EVA)</span>
+            Extravehicular activity <span className="text-slate-300">(EVA)</span> fitness
           </span>
           <span className={`text-sm font-bold tabular-nums ${cor.texto}`}>{prontidao ? `${aptidao}%` : "—"}</span>
           {prontidao && prontidao.status_eva === "INAPTO" ? (
-            // Mensagem única de suspensão: o mesmo status que o painel de protocolo mostra
+            // Single suspension message: the same status the protocol panel shows
             <button
               type="button"
               onClick={onVerProtocolo}
-              title={prontidao.bloqueios.map((b) => `${b.nivel}: ${b.motivo}`).join("\n")}
+              title={prontidao.bloqueios.map((b) => `${tNivelEva(b.nivel)}: ${b.motivo}`).join("\n")}
               className="rounded border border-red-500/70 bg-red-500/15 px-2 py-0.5 font-semibold normal-case tracking-normal text-red-200 hover:bg-red-500/25"
             >
-              ⛔ Atividade extraveicular suspensa · <span className="underline underline-offset-2">ver motivo e protocolo</span>
+              ⛔ Extravehicular activity suspended · <span className="underline underline-offset-2">see reason and protocol</span>
             </button>
           ) : (
             prontidao && <span className={`font-semibold ${cor.texto}`}>// {prontidao.rotulo_eva}</span>
           )}
           {prontidao && prontidao.aptidao_eva < prontidao.prontidao_atual && (
-            <span className="normal-case tracking-normal text-slate-500">(prontidão {prontidao.prontidao_atual}%, com teto de segurança)</span>
+            <span className="normal-case tracking-normal text-slate-500">(readiness {prontidao.prontidao_atual}%, with safety cap)</span>
           )}
-          {/* Telemetria ao vivo do smartwatch */}
+          {/* Live smartwatch telemetry */}
           <span
             className={`ml-auto flex items-center gap-1 normal-case tracking-normal ${sincronia.estado === "erro" ? "text-red-300" : "text-slate-400"}`}
             role="status"
@@ -111,7 +112,7 @@ export function ProntidaoHUD({ prontidao, xp, ganho, sinais, sincronia, onVerPro
             {sincronia.texto}
           </span>
         </div>
-        <div className="flex gap-[3px]" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={aptidao} aria-label="Aptidão para EVA">
+        <div className="flex gap-[3px]" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={aptidao} aria-label="EVA fitness">
           {Array.from({ length: 20 }, (_, i) => (
             <span
               key={i}
@@ -120,20 +121,20 @@ export function ProntidaoHUD({ prontidao, xp, ganho, sinais, sincronia, onVerPro
             />
           ))}
         </div>
-        {/* Composição do score cumulativo (lista completa no tooltip) */}
+        {/* Cumulative score breakdown (full list in the tooltip) */}
         {prontidao ? (
           <p className="mt-1 truncate font-mono text-[9px] text-slate-500" title={detalhe}>
             <span className="text-slate-300">Base {fmt(prontidao.base.valor)}</span>
-            <span className="text-amber-300/90"> − Desgaste {fmt(prontidao.desgaste_acumulado)}</span>
-            {prontidao.penalidade_aguda > 0 && <span className="text-red-300/90"> − Agudo {fmt(prontidao.penalidade_aguda)}</span>}
-            <span className="text-emerald-400/90"> | Recuperado +{fmt(prontidao.recuperacao_acumulada)}</span>
-            {prontidao.contramedidas_consideradas > 0 && <span className="text-cyan-300/90"> | {prontidao.contramedidas_consideradas} contramedida(s)</span>}
+            <span className="text-amber-300/90"> − Wear {fmt(prontidao.desgaste_acumulado)}</span>
+            {prontidao.penalidade_aguda > 0 && <span className="text-red-300/90"> − Acute {fmt(prontidao.penalidade_aguda)}</span>}
+            <span className="text-emerald-400/90"> | Recovered +{fmt(prontidao.recuperacao_acumulada)}</span>
+            {prontidao.contramedidas_consideradas > 0 && <span className="text-cyan-300/90"> | {prontidao.contramedidas_consideradas} countermeasure(s)</span>}
             {prontidao.bloqueios[0] && <span className="text-red-300/90"> | {prontidao.bloqueios[0].motivo}</span>}
           </p>
         ) : (
-          <p className="mt-1 font-mono text-[9px] text-slate-500">Calculando prontidão cumulativa…</p>
+          <p className="mt-1 font-mono text-[9px] text-slate-500">Calculating cumulative readiness…</p>
         )}
-        {/* Feedback do ganho: sobe e some */}
+        {/* Gain feedback: rises and fades */}
         {ganho && (
           <span
             key={ganho.id}
@@ -144,20 +145,20 @@ export function ProntidaoHUD({ prontidao, xp, ganho, sinais, sincronia, onVerPro
         )}
       </div>
 
-      {/* Curva de prontidão 00:00 → hora atual */}
+      {/* Readiness curve 00:00 → current hour */}
       {prontidao && prontidao.historico_prontidao.length > 0 && (
         <div className="flex flex-col gap-0.5">
-          <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-slate-500">Prontidão no dia</span>
+          <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-slate-500">Readiness today</span>
           <CurvaDia historico={prontidao.historico_prontidao} cor={cor.linha} />
         </div>
       )}
 
-      {/* XP de mitigação */}
+      {/* Mitigation XP */}
       <div className={`rounded border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ${cor.borda}`}>
-        <span className="text-slate-500">Mitigação</span> <span className="font-bold tabular-nums text-cyan-200">{xp} XP</span>
+        <span className="text-slate-500">Mitigation</span> <span className="font-bold tabular-nums text-cyan-200">{xp} XP</span>
       </div>
 
-      {/* Sinais vitais resumidos */}
+      {/* Summarized vital signs */}
       <div className="flex flex-wrap gap-1.5">
         {sinais.map((s) => (
           <span

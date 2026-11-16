@@ -1,15 +1,16 @@
 import { ClipboardList, Dumbbell, Flame, TrendingUp } from "lucide-react";
 import { Painel } from "./Painel";
+import { tCategorias } from "../i18n";
 import type { CoachExercicio, ExameSugerido, PredicaoTendencia } from "../types";
 
 /* ------------------------------------------------------------------ */
-/* (a) Alerta de tendência preditiva e contramedidas                   */
+/* (a) Predictive trend alert and countermeasures                   */
 /* ------------------------------------------------------------------ */
 
-/** Alerta ATUAL do dia (triagem), para a tendência nunca soar como "sem risco" enquanto ele está ativo. */
+/** CURRENT alert of the day (triage), so the trend never sounds like "no risk" while it is active. */
 export interface AlertaAtual {
-  codigo: number; // 2 = atenção, 3 = crítico
-  categorias: string[]; // ex.: ["Radiação"]
+  codigo: number; // 2 = warning, 3 = critical
+  categorias: string[]; // e.g. ["Radiação"]
   radiacaoTotalMsv?: number;
 }
 
@@ -27,32 +28,32 @@ export function PredicaoPanel({ predicao, alertaAtual, className = "" }: {
       : predicao.nivel === "observacao"
         ? "border-sky-500/60 text-sky-300"
         : alertaAtivo
-          ? "border-slate-500/60 text-slate-300" // sem piora, mas não "estável/verde" com alerta ativo
+          ? "border-slate-500/60 text-slate-300" // no worsening, but not "stable/green" with an active alert
           : "border-emerald-600/60 text-emerald-300";
   const nomeNivel: Record<string, string> = {
-    atencao: "ATENÇÃO",
-    observacao: "OBSERVAR",
-    estavel: alertaAtivo ? "SEM PIORA GRADUAL" : "ESTÁVEL",
-    dados_insuficientes: "POUCOS DADOS",
+    atencao: "WARNING",
+    observacao: "WATCH",
+    estavel: alertaAtivo ? "NO GRADUAL WORSENING" : "STABLE",
+    dados_insuficientes: "NOT ENOUGH DATA",
   };
 
   return (
     <Painel
-      titulo="Tendência preditiva"
+      titulo="Predictive trend"
       icone={<TrendingUp className="h-4 w-4" />}
       className={className}
       extra={
         <span className={`rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold ${corNivel}`}>
           {nomeNivel[predicao.nivel] ?? predicao.nivel}
-          {predicao.inicio !== undefined && ` • dias ${predicao.inicio}–${predicao.fim}`}
+          {predicao.inicio !== undefined && ` • days ${predicao.inicio}–${predicao.fim}`}
         </span>
       }
     >
       <p className="mb-3 text-xs text-slate-400">
-        {semPiora && predicao.nivel !== "dados_insuficientes" ? "Sem piora gradual detectada na janela." : predicao.resumo} Este painel olha a <strong className="text-slate-300">tendência</strong> dos últimos dias, não o alerta de hoje.
+        {semPiora && predicao.nivel !== "dados_insuficientes" ? "No gradual worsening detected in the window." : predicao.resumo} This panel looks at the <strong className="text-slate-300">trend</strong> of the last few days, not at today's alert.
       </p>
 
-      {/* Alerta atual × tendência recente: um alerta ativo pode existir sem piora na série */}
+      {/* Current alert × recent trend: an active alert can exist with no worsening in the series */}
       {alertaAtivo && (
         <div
           className={`mb-3 rounded border p-3 text-xs ${
@@ -60,17 +61,17 @@ export function PredicaoPanel({ predicao, alertaAtual, className = "" }: {
           }`}
         >
           <p className="font-semibold">
-            ⚠ Alerta ativo hoje{alertaAtual.categorias.length ? ` (${alertaAtual.categorias.join(", ")})` : ""}: o risco continua presente.
+            ⚠ Active alert today{alertaAtual.categorias.length ? ` (${tCategorias(alertaAtual.categorias)})` : ""}: the risk is still present.
           </p>
           <p className="mt-1 text-[11px] opacity-90">
-            {semPiora ? "A ausência de piora gradual não reduz o alerta atual" : "As tendências abaixo somam-se ao alerta atual"}: siga o protocolo e
-            as contramedidas do dia.
+            {semPiora ? "The absence of gradual worsening does not reduce the current alert" : "The trends below add to the current alert"}: follow the protocol and
+            today's countermeasures.
           </p>
           {radiacaoAtiva && (
             <p className="mt-1 text-[11px] opacity-90">
-              Radiação é dose <strong>cumulativa</strong>
-              {alertaAtual.radiacaoTotalMsv !== undefined && ` (${alertaAtual.radiacaoTotalMsv.toLocaleString("pt-BR")} mSv até hoje)`}: o
-              dano biológico e o risco de câncer a longo prazo não regridem quando a taxa para de subir.
+              Radiation is a <strong>cumulative</strong> dose
+              {alertaAtual.radiacaoTotalMsv !== undefined && ` (${alertaAtual.radiacaoTotalMsv.toLocaleString("en-US")} mSv to date)`}: 
+              biological damage and long-term cancer risk do not go away when the rate stops rising.
             </p>
           )}
         </div>
@@ -79,11 +80,11 @@ export function PredicaoPanel({ predicao, alertaAtual, className = "" }: {
       {semPiora ? (
         alertaAtivo ? (
           <p className="rounded border border-slate-700 bg-(--subcard) p-3 text-xs text-slate-300">
-            Sem piora gradual na janela (sono, FC, pressão, ritmo de radiação, treino e humor). Isso não significa ausência de risco.
+            No gradual worsening in the window (sleep, HR, blood pressure, radiation rate, workout and mood). This does not mean there is no risk.
           </p>
         ) : (
           <p className="rounded border border-emerald-900/60 bg-emerald-500/5 p-3 text-xs text-emerald-300">
-            Sem tendência de piora: sono, FC, pressão, ritmo de radiação, treino e humor estáveis na janela.
+            No worsening trend: sleep, HR, blood pressure, radiation rate, workout and mood are stable in the window.
           </p>
         )
       ) : (
@@ -97,11 +98,11 @@ export function PredicaoPanel({ predicao, alertaAtual, className = "" }: {
                     r.severidade === "provavel" ? "bg-amber-500/20 text-amber-300" : "bg-sky-500/15 text-sky-300"
                   }`}
                 >
-                  {r.severidade === "provavel" ? "provável" : "emergente"}
+                  {r.severidade === "provavel" ? "likely" : "emerging"}
                 </span>
               </div>
               <p className="mt-0.5 font-mono text-[10px] text-slate-500">
-                {r.categoria} • perigo NASA: {r.perigo_nasa}
+                {r.categoria} • NASA hazard: {r.perigo_nasa}
               </p>
               <p className="mt-1 text-[11px] text-slate-300">📈 {r.evidencias.join(" • ")}</p>
               <ul className="mt-2 space-y-1">
@@ -121,7 +122,7 @@ export function PredicaoPanel({ predicao, alertaAtual, className = "" }: {
 }
 
 /* ------------------------------------------------------------------ */
-/* (b) Exames sugeridos por déficit de dados                           */
+/* (b) Exams suggested due to data gaps                           */
 /* ------------------------------------------------------------------ */
 
 const COR_PRIORIDADE = {
@@ -130,19 +131,20 @@ const COR_PRIORIDADE = {
   baixa: "bg-slate-700/40 text-slate-300 border-slate-600",
 };
 
-const NOME_TIPO = { ausente: "dado ausente", inconsistente: "dado inconsistente", inconclusivo: "inconclusivo" };
+const NOME_TIPO = { ausente: "missing data", inconsistente: "inconsistent data", inconclusivo: "inconclusive" };
+const NOME_PRIORIDADE = { alta: "high", media: "medium", baixa: "low" };
 
 export function ExamesPanel({ exames, className = "" }: { exames: ExameSugerido[]; className?: string }) {
   return (
     <Painel
-      titulo="Exames sugeridos"
+      titulo="Suggested exams"
       icone={<ClipboardList className="h-4 w-4" />}
       className={className}
-      extra={<span className="font-mono text-[10px] text-slate-500">por déficit de informação</span>}
+      extra={<span className="font-mono text-[10px] text-slate-500">due to information gaps</span>}
     >
       {exames.length === 0 ? (
         <p className="rounded border border-emerald-900/60 bg-emerald-500/5 p-3 text-xs text-emerald-300">
-          Dados completos e consistentes: nenhum exame complementar sugerido.
+          Complete and consistent data: no additional exam suggested.
         </p>
       ) : (
         <ul className="space-y-2">
@@ -151,7 +153,7 @@ export function ExamesPanel({ exames, className = "" }: { exames: ExameSugerido[
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm font-semibold text-white">{e.exame}</p>
                 <span className={`whitespace-nowrap rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase ${COR_PRIORIDADE[e.prioridade]}`}>
-                  {e.prioridade}
+                  {NOME_PRIORIDADE[e.prioridade]}
                 </span>
               </div>
               <p className="mt-1 text-[11px] text-slate-300">
@@ -159,7 +161,7 @@ export function ExamesPanel({ exames, className = "" }: { exames: ExameSugerido[
                 {e.motivo}
               </p>
               <p className="mt-1 text-[11px] text-cyan-100">
-                <span className="text-cyan-400">▸ A bordo:</span> {e.procedimento}
+                <span className="text-cyan-400">▸ On board:</span> {e.procedimento}
               </p>
             </li>
           ))}
@@ -170,21 +172,21 @@ export function ExamesPanel({ exames, className = "" }: { exames: ExameSugerido[
 }
 
 /* ------------------------------------------------------------------ */
-/* (c) Coach de exercício                                              */
+/* (c) Exercise coach                                              */
 /* ------------------------------------------------------------------ */
 
 const COR_STATUS = {
-  meta_cumprida: { barra: "from-emerald-500 to-emerald-300", texto: "text-emerald-300", nome: "META CUMPRIDA" },
-  no_caminho: { barra: "from-cyan-500 to-emerald-400", texto: "text-cyan-300", nome: "NO CAMINHO" },
-  atencao: { barra: "from-amber-500 to-amber-300", texto: "text-amber-300", nome: "ATENÇÃO" },
-  critico: { barra: "from-red-500 to-amber-400", texto: "text-red-300", nome: "DÉFICIT" },
+  meta_cumprida: { barra: "from-emerald-500 to-emerald-300", texto: "text-emerald-300", nome: "GOAL MET" },
+  no_caminho: { barra: "from-cyan-500 to-emerald-400", texto: "text-cyan-300", nome: "ON TRACK" },
+  atencao: { barra: "from-amber-500 to-amber-300", texto: "text-amber-300", nome: "WARNING" },
+  critico: { barra: "from-red-500 to-amber-400", texto: "text-red-300", nome: "DEFICIT" },
 };
 
 export function CoachPanel({ coach, className = "" }: { coach: CoachExercicio; className?: string }) {
   const cor = COR_STATUS[coach.status];
   return (
     <Painel
-      titulo="Coach de exercício"
+      titulo="Exercise coach"
       icone={<Dumbbell className="h-4 w-4" />}
       className={className}
       extra={<span className={`font-mono text-[10px] font-bold ${cor.texto}`}>{cor.nome}</span>}
@@ -192,7 +194,7 @@ export function CoachPanel({ coach, className = "" }: { coach: CoachExercicio; c
       <div className="space-y-3">
         <div>
           <div className="mb-1 flex justify-between font-mono text-[11px] text-slate-400">
-            <span>Hoje até {String(coach.hora).padStart(2, "0")}:00</span>
+            <span>Today until {String(coach.hora).padStart(2, "0")}:00</span>
             <span className="text-white">
               {coach.concluido_min} / {coach.meta_diaria_min} min
             </span>
@@ -201,13 +203,13 @@ export function CoachPanel({ coach, className = "" }: { coach: CoachExercicio; c
             <div className={`h-full rounded-full bg-gradient-to-r ${cor.barra} transition-all duration-500`} style={{ width: `${coach.progresso_dia_pct}%` }} />
           </div>
           <p className="mt-1 font-mono text-[10px] text-slate-500">
-            {coach.deficit_min > 0 ? `faltam ${coach.deficit_min} min` : "meta do dia atingida"}
+            {coach.deficit_min > 0 ? `${coach.deficit_min} min to go` : "daily goal reached"}
           </p>
         </div>
 
         <div>
           <div className="mb-1 flex justify-between font-mono text-[11px] text-slate-400">
-            <span>Semana (7 dias)</span>
+            <span>Week (7 days)</span>
             <span className="text-white">
               {coach.semana_min} / {coach.meta_semana_min} min
             </span>
@@ -220,11 +222,11 @@ export function CoachPanel({ coach, className = "" }: { coach: CoachExercicio; c
         <div className="flex items-center gap-2 rounded border border-slate-800 bg-(--subcard) px-3 py-2">
           <Flame className="h-4 w-4 text-orange-400" />
           <span className="font-mono text-sm font-bold text-white">{coach.streak_dias}</span>
-          <span className="text-[11px] text-slate-400">dia(s) seguidos na meta</span>
+          <span className="text-[11px] text-slate-400">consecutive day(s) on goal</span>
         </div>
 
         <p className={`rounded border-l-2 border-cyan-400 bg-(--subcard) p-2 text-xs text-slate-200`}>💬 {coach.recomendacao}</p>
-        <p className="font-mono text-[9px] text-slate-600">Meta operacional do projeto: 60 min/dia contra atrofia muscular e perda óssea.</p>
+        <p className="font-mono text-[9px] text-slate-600">Project operational goal: 60 min/day against muscle atrophy and bone loss.</p>
       </div>
     </Painel>
   );
