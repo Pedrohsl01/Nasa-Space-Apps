@@ -4,6 +4,7 @@
 ![Python](https://img.shields.io/badge/Backend-Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Frontend](https://img.shields.io/badge/Frontend-Vite%20%2B%20React-646CFF?style=for-the-badge&logo=vite&logoColor=white)
 ![pnpm](https://img.shields.io/badge/Package%20Manager-pnpm-F69220?style=for-the-badge&logo=pnpm&logoColor=white)
+![Site of project](https://astro-health-tau.vercel.app/).
 
 Autonomous biomedical monitoring and clinical decision support system developed for the **NASA Space Apps Challenge 2026**. **Astro Health BR** is designed to operate with **onboard autonomy** and **low cognitive load**, assisting crews on long-duration missions and planetary habitats (such as Martian bases), where communication delays make real-time ground medical support unfeasible.
 
@@ -18,7 +19,12 @@ The monitoring parameters and clinical triage rules are based on the risks mappe
 - **Space Radiation:** tracking cumulative exposure and correlated indicators.
 - **Microgravity and Physiological Adaptation:** cardiovascular, hemodynamic, and musculoskeletal monitoring.
 - **Isolation, Confinement, and Circadian Rhythm:** assessment of sleep quality, fatigue, and operational stress.
+  
+## Data Disclaimer
 
+The data used in the simulated mission days is **not official NASA data**. Individual human health measurements from astronauts, such as blood pressure, body temperature and heart rate, are not made publicly available.
+
+For this reason, all values in this project are **synthetic**: they were created by our team for the sole purpose of building and demonstrating the system.
 ---
 
 ## ⚙️ System Architecture and Modules
