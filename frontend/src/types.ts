@@ -219,7 +219,9 @@ export interface TelemetriaHoraria {
   ultima_leitura?: string;
   horas_coletadas?: number;
   dia_completo?: boolean;
-  virada?: { de: number; para: number; registrado: boolean } | null;
+  historico?: boolean; // dia anterior ao último: 24 leituras, sem coleta ao vivo
+  coleta_ao_vivo?: boolean; // dia novo (criado pelo app) em coleta hora a hora; false = dia completo da planilha
+  virada?: { de: number; para: number; registrado: boolean; tripulacao?: TripulanteRegistrado[] } | null;
 }
 
 export interface Analise {
@@ -250,6 +252,17 @@ export interface Analise {
   dia_registrado?: number;
   origem?: "manual" | "simulado_normal" | "simulado_anomalia";
   cenario_simulado?: string | null;
+  tripulacao_registrada?: TripulanteRegistrado[]; // dia seguinte simulado para os demais tripulantes
+}
+
+/** Dia simulado automaticamente para outro tripulante quando um dia novo é registrado. */
+export interface TripulanteRegistrado {
+  id_astronauta: string;
+  nome: string;
+  dia_registrado?: number;
+  cenario_simulado?: string | null;
+  codigo_semaforo?: number;
+  erro?: string;
 }
 
 export interface Medicoes {

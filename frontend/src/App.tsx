@@ -6,15 +6,16 @@ import {
   ChevronRight,
   Earth,
   RefreshCw,
+  Rocket,
   Satellite,
   ShieldAlert,
+  Siren,
   Sparkles,
   Trophy,
 } from "lucide-react";
 import { BodyMap, type RegiaoSelecionada } from "./components/BodyMap";
 import { exigeAlertaCritico, motivosPorZona, orgaosEmAlerta } from "./components/motivosAlerta";
 import { META_TREINO, TendenciaChart } from "./components/TendenciaChart";
-import { RegistroModal } from "./components/RegistroModal";
 import { SpinoffModal } from "./components/SpinoffModal";
 import { DispositivoWidget, TemperaturaExternaWidget } from "./components/Widgets";
 import { Painel } from "./components/Painel";
@@ -44,16 +45,18 @@ import {
   estadoAoVivo,
   listarAstronautas,
   registrarDia,
-  reiniciarDiaAoVivo,
   type EventosAoVivo,
 } from "./api";
-import type { Analise, Astronauta, Desvio, Medicoes, ProntidaoCumulativa, RelatoDesconforto, TelemetriaHoraria } from "./types";
+import type {
+  Analise,
+  Astronauta,
+  Desvio,
+  ProntidaoCumulativa,
+  RelatoDesconforto,
+  TelemetriaHoraria,
+  TripulanteRegistrado,
+} from "./types";
 
-const NOME_AMBIENTE: Record<string, string> = {
-  "Estacao Orbital": "Estação Orbital",
-  "Transito para Marte": "Trânsito para Marte",
-  "Base Marciana": "Base Marciana",
-};
 
 const TEMA_AMBIENTE: Record<string, "mars" | "transit" | "station"> = {
   "Base Marciana": "mars",
@@ -100,26 +103,36 @@ function formatarDesvio(d: Desvio) {
 }
 
 // Botão do header: borda fina e brilho suave, mesmo visual para os quatro
-function BotaoTopo({ children, onClick, disabled, cor }: {
+function BotaoTopo({ children, onClick, disabled, cor, icone }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
-  cor: "cyan" | "red" | "emerald";
+  cor: "red" | "emerald";
+  icone: React.ReactNode;
 }) {
   const estilos = {
-    cyan: "border-cyan-400/70 text-cyan-200 hover:bg-cyan-500/15",
-    red: "border-red-400/70 text-red-200 hover:bg-red-500/15",
-    emerald: "border-emerald-400/70 text-emerald-200 hover:bg-emerald-500/15",
+    red: "border-red-400/60 bg-red-500/10 text-red-200 hover:bg-red-500/20",
+    emerald: "border-emerald-400/60 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20",
   };
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`whitespace-nowrap rounded border bg-transparent px-2.5 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider transition disabled:opacity-40 ${estilos[cor]}`}
+      className={`flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border px-3 font-mono text-[10px] font-semibold uppercase tracking-wider transition disabled:opacity-40 ${estilos[cor]}`}
     >
+      {icone}
       {children}
     </button>
   );
+}
+
+/** Resumo, no aviso, do dia simulado para o resto da tripulação (sem pop-up: só o tripulante selecionado abre pop-up). */
+function textoTripulacao(lista?: TripulanteRegistrado[] | null) {
+  if (!lista?.length) return "";
+  const itens = lista.map((t) =>
+    t.erro ? `${t.nome}: falhou (${t.erro})` : `${t.nome}: dia ${t.dia_registrado}${t.cenario_simulado ? " com anomalia" : ""} (nível ${t.codigo_semaforo})`,
+  );
+  return ` • Também simulado: ${itens.join("; ")}`;
 }
 
 export function App() {
@@ -167,10 +180,8 @@ export function App() {
     const t = setTimeout(() => setGanho(null), 2600);
     return () => clearTimeout(t);
   }, [ganho]);
-  const [modalRegistro, setModalRegistro] = useState(false);
   const [modalSpinoff, setModalSpinoff] = useState(false);
   const [registrando, setRegistrando] = useState(false);
-  const [erroRegistro, setErroRegistro] = useState<string | null>(null);
   // Evita uma segunda chamada logo depois de registrar (a resposta do registro já traz a análise)
   const pularProximaAnalise = useRef(false);
 
@@ -245,6 +256,10 @@ export function App() {
   const [horaria, setHoraria] = useState<TelemetriaHoraria | null>(null);
   const [coletando, setColetando] = useState(false);
   const [erroSync, setErroSync] = useState(false);
+  // Pop-up de alerta crítico só no momento de uma ALTERAÇÃO (leitura nova do wearable ou dia registrado),
+  // nunca ao navegar entre dias ou tripulantes. Até esse instante (ms) um alerta novo pode abrir o pop-up.
+  const liberarAlertaAte = useRef(0);
+  const JANELA_ALERTA_MS = 8000;
 
   // Avisos somem sozinhos depois de alguns segundos
   useEffect(() => {
@@ -254,6 +269,7 @@ export function App() {
   }, [aviso]);
 
   const trocarAstronauta = (id: string) => {
+    liberarAlertaAte.current = 0; // navegação não dispara pop-up
     const a = astronautas.find((x) => x.id_astronauta === id);
     setIdAstronauta(id);
     setRegiaoSel(null); // a região selecionada era do tripulante anterior
@@ -262,20 +278,22 @@ export function App() {
 
   const mudarDia = (delta: number) => {
     if (diaMissao === null) return;
+    liberarAlertaAte.current = 0; // navegação não dispara pop-up
     setDiaMissao(Math.min(ultimoDia, Math.max(1, diaMissao + delta)));
   };
 
 
-  const executarRegistro = async (opcoes: { medicoes?: Medicoes; simular_anomalia?: boolean }): Promise<boolean> => {
+  // Simula o dia seguinte (para toda a tripulação) e ABRE o dia simulado, completo, com a simulação dele
+  const executarRegistro = async (opcoes: { simular_anomalia?: boolean }): Promise<boolean> => {
     setRegistrando(true);
-    setErroRegistro(null);
+    setTocando(false); // o play não deve sair do dia simulado para abrir outro
     try {
       const resp = await registrarDia({ id_astronauta: idAstronauta, ...opcoes });
       pularProximaAnalise.current = true;
+      liberarAlertaAte.current = Date.now() + JANELA_ALERTA_MS; // dia novo registrado: alerta dele pode abrir o pop-up
       setDados(resp);
       setDiaMissao(resp.dia_registrado ?? null);
       await carregarAstronautas();
-      setModalRegistro(false);
       const triagemNova = resp.payload_compacto.triagem_python;
       const origem =
         resp.origem === "manual"
@@ -283,12 +301,12 @@ export function App() {
           : resp.cenario_simulado
             ? `simulado com anomalia: ${NOME_CENARIO[resp.cenario_simulado] ?? resp.cenario_simulado}`
             : "simulado (dia normal)";
-      setAviso(`Dia ${resp.dia_registrado} ${origem} e salvo na base • Nível ${triagemNova.codigo_semaforo} (${triagemNova.categoria_risco})`);
+      setAviso(
+        `Dia ${resp.dia_registrado} ${origem} e salvo na base • Nível ${triagemNova.codigo_semaforo} (${triagemNova.categoria_risco})${textoTripulacao(resp.tripulacao_registrada)}`,
+      );
       return true;
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (modalRegistro) setErroRegistro(msg);
-      else setErro(msg);
+      setErro(e instanceof Error ? e.message : String(e));
       return false;
     } finally {
       setRegistrando(false);
@@ -325,11 +343,17 @@ export function App() {
   const assinaturaAlerta = exigeAlertaCritico(orgaosAlerta)
     ? `${idAstronauta}|${diaMissao}|${orgaosAlerta.map((o) => `${o.zona}:${o.nivel}`).join(",")}`
     : null;
+  // Quadro crítico NOVO: abre o pop-up só se veio de uma alteração (leitura nova ou dia registrado);
+  // se apareceu por navegação, fica só no mapa e conta como já visto.
   const [alertasVistos, setAlertasVistos] = useState<Set<string>>(() => new Set());
-  const mostrarAlertaCritico = assinaturaAlerta !== null && !alertasVistos.has(assinaturaAlerta);
-  const fecharAlertaCritico = useCallback(() => {
-    if (assinaturaAlerta) setAlertasVistos((vistos) => new Set(vistos).add(assinaturaAlerta));
-  }, [assinaturaAlerta]);
+  const [alertaAberto, setAlertaAberto] = useState<string | null>(null);
+  useEffect(() => {
+    if (!assinaturaAlerta || alertasVistos.has(assinaturaAlerta)) return;
+    if (Date.now() <= liberarAlertaAte.current) setAlertaAberto(assinaturaAlerta);
+    setAlertasVistos((vistos) => new Set(vistos).add(assinaturaAlerta));
+  }, [assinaturaAlerta, alertasVistos]);
+  const mostrarAlertaCritico = alertaAberto !== null && alertaAberto === assinaturaAlerta;
+  const fecharAlertaCritico = useCallback(() => setAlertaAberto(null), []);
 
   // Gamificação: metas diárias simples e transparentes (metas do projeto, não clínicas)
   const missoes = useMemo(() => {
@@ -381,13 +405,15 @@ export function App() {
   // Chamadas ao vivo em fila (uma por vez): um tick nunca atropela o outro
   const filaAoVivo = useRef<Promise<unknown>>(Promise.resolve());
   const chamarAoVivo = useCallback(
-    (pedido: (e: EventosAoVivo) => Promise<TelemetriaHoraria>) => {
+    // alteracao=true: a chamada gera uma leitura nova (tick/pico/virada) e pode abrir o pop-up de alerta
+    (pedido: (e: EventosAoVivo) => Promise<TelemetriaHoraria>, alteracao = false) => {
       filaAoVivo.current = filaAoVivo.current.then(async () => {
         const ev = eventosRef.current;
         if (!ev) return;
         setColetando(true);
         try {
           const r = await pedido(ev);
+          if (alteracao) liberarAlertaAte.current = Date.now() + JANELA_ALERTA_MS;
           setHoraria(r);
           setErroSync(false);
           if (r.virada) {
@@ -395,7 +421,7 @@ export function App() {
             setDiaMissao(r.dia_missao);
             if (r.virada.registrado) {
               carregarAstronautas();
-              setAviso(`Dia ${r.virada.para} simulado (dia normal) e salvo na base`);
+              setAviso(`Dia ${r.virada.para} simulado (dia normal) e salvo na base${textoTripulacao(r.virada.tripulacao)}`);
             }
           }
         } catch (e) {
@@ -433,15 +459,13 @@ export function App() {
 
   // Play: coleta 1 hora a cada 5 s (1x), 2,5 s (2x) ou 1 s (5x) até o operador pausar; vira o dia sozinho
   useEffect(() => {
-    if (!tocando || !aoVivoDoDia) return;
-    const t = setTimeout(() => chamarAoVivo(avancarHoraAoVivo), 5000 / velocidade);
+    if (!tocando || !aoVivoDoDia || aoVivoDoDia.historico) return; // dias anteriores já estão completos
+    const t = setTimeout(() => chamarAoVivo(avancarHoraAoVivo, true), 5000 / velocidade);
     return () => clearTimeout(t);
   }, [tocando, aoVivoDoDia, velocidade, chamarAoVivo]);
 
-  const avancarUmaHora = () => chamarAoVivo(avancarHoraAoVivo);
-  const simularPico = () => chamarAoVivo((e) => avancarHoraAoVivo(e, true));
-  const reiniciarDia = () => chamarAoVivo((e) => reiniciarDiaAoVivo(e));
-  const proximoDia = () => chamarAoVivo((e) => reiniciarDiaAoVivo(e, true));
+  const avancarUmaHora = () => chamarAoVivo(avancarHoraAoVivo, true);
+  const simularPico = () => chamarAoVivo((e) => avancarHoraAoVivo(e, true), true);
 
   const mostrarGanho = (antes: number, depois: number, xpGanho: number) => {
     const delta = depois - antes;
@@ -497,12 +521,12 @@ export function App() {
     ? { estado: "erro", texto: "Sem sincronia com o wearable" }
     : !aoVivoDoDia
       ? { estado: "coletando", texto: "Conectando ao wearable…" }
-      : {
+      : aoVivoDoDia.historico || aoVivoDoDia.coleta_ao_vivo === false
+        ? { estado: "ok", texto: "Dia registrado • 24 leituras" }
+        : {
           estado: coletando ? "coletando" : "ok",
           texto: `${coletando ? "Coletando" : "Sincronizado"} • Última leitura: ${aoVivoDoDia.ultima_leitura ?? aoVivoDoDia.ponto_atual.rotulo}`,
         };
-
-  const seletor = "rounded border border-cyan-900 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none";
 
   return (
     // Tema de cores pelo cenário do dia: Base Marciana, Trânsito para Marte ou Estação Orbital
@@ -534,7 +558,9 @@ export function App() {
 
       {/* ============ HEADER (uma linha) ============ */}
       <header className="sticky top-0 z-30 border-b border-(--borda) bg-(--card) px-4 py-2 backdrop-blur-md lg:px-6">
-        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-x-4 gap-y-2 xl:flex-nowrap">
+        {/* Celular: marca, ações e tripulante empilhados e centralizados. Tablet: marca e ações na 1ª linha,
+            tripulante embaixo. Desktop: 3 colunas, tripulante centralizado. */}
+        <div className="mx-auto grid max-w-[1500px] grid-cols-1 items-center justify-items-center gap-x-4 gap-y-2 sm:grid-cols-[1fr_auto] sm:justify-items-stretch lg:grid-cols-[1fr_auto_1fr]">
           <h1 className="flex items-center gap-2 whitespace-nowrap text-lg font-bold tracking-tight text-white">
             <LogoApp className="h-7 w-7 shrink-0" />
             <span>
@@ -542,12 +568,12 @@ export function App() {
             </span>
           </h1>
 
-          {/* Centro: tripulante e status */}
-          <div className="flex items-center gap-2">
+          {/* Centro: tripulante e status do motor num único bloco */}
+          <div className="order-last col-span-full flex h-9 max-w-full min-w-0 items-stretch justify-self-center overflow-hidden rounded-md border border-cyan-900/80 bg-slate-950/70 lg:order-none lg:col-span-1">
             <select
               value={idAstronauta}
               onChange={(e) => trocarAstronauta(e.target.value)}
-              className={seletor}
+              className="min-w-0 cursor-pointer truncate bg-transparent pr-2 pl-3 text-xs font-semibold text-slate-100 focus:bg-cyan-500/10 focus:outline-none [&>option]:bg-slate-950"
               aria-label="Tripulante"
               title="Tripulante"
             >
@@ -563,33 +589,31 @@ export function App() {
             </select>
             <span
               title={iaOnline ? "IA Groq conectada" : "Offline-First: orientação gerada localmente"}
-              className={`flex items-center gap-1.5 whitespace-nowrap rounded border px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${
-                backendOnline === false ? "border-red-800 text-red-400" : "border-green-900 text-green-400"
+              className={`flex items-center gap-1.5 whitespace-nowrap border-l border-cyan-900/80 px-3 font-mono text-[10px] uppercase tracking-wider ${
+                backendOnline === false ? "text-red-400" : "text-green-400"
               }`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${backendOnline === false ? "bg-red-500" : "animate-pulse bg-green-500"}`} />
-              Motor local {backendOnline === false ? "offline" : "online"}
-              <span className={iaOnline ? "text-cyan-300" : "text-slate-500"}>• {iaOnline ? "IA" : "Local"}</span>
+              <span className="hidden sm:inline">Motor {backendOnline === false ? "offline" : "online"}</span>
+              <span className={iaOnline ? "text-cyan-300" : "text-slate-500"}>
+                <span className="hidden sm:inline">• </span>
+                {iaOnline ? "IA" : "Local"}
+              </span>
             </span>
           </div>
 
-          {/* Direita: quatro botões compactos */}
-          <div className="flex items-center gap-2">
+          {/* Direita: ações */}
+          <div className="flex items-center gap-2 sm:justify-self-end">
             <BotaoTopo
-              cor="cyan"
+              cor="red"
+              icone={<Siren className="h-3.5 w-3.5" />}
               disabled={!backendOnline || registrando}
-              onClick={() => {
-                setErroRegistro(null);
-                setModalRegistro(true);
-              }}
+              onClick={() => executarRegistro({ simular_anomalia: true })}
             >
-              + Registrar próximo dia
+              {registrando ? "Simulando..." : "Simular dia de alerta"}
             </BotaoTopo>
-            <BotaoTopo cor="red" disabled={!backendOnline || registrando} onClick={() => executarRegistro({ simular_anomalia: true })}>
-              🚨 {registrando ? "Simulando..." : "Simular dia de alerta"}
-            </BotaoTopo>
-            <BotaoTopo cor="emerald" onClick={() => setModalSpinoff(true)}>
-              🌀 Spinoff
+            <BotaoTopo cor="emerald" icone={<Rocket className="h-3.5 w-3.5" />} onClick={() => setModalSpinoff(true)}>
+              Spinoff
             </BotaoTopo>
           </div>
         </div>
@@ -661,7 +685,10 @@ export function App() {
                 min={1}
                 max={ultimoDia}
                 value={diaMissao ?? 1}
-                onChange={(e) => setDiaMissao(Number(e.target.value))}
+                onChange={(e) => {
+                  liberarAlertaAte.current = 0; // navegação não dispara pop-up
+                  setDiaMissao(Number(e.target.value));
+                }}
                 className="trilha-dia mt-2 w-full"
                 aria-label="Dia da missão"
                 style={{ ["--progresso" as string]: `${(((diaMissao ?? 1) - 1) / Math.max(1, ultimoDia - 1)) * 100}%` }}
@@ -677,7 +704,7 @@ export function App() {
         </Painel>
 
         {dados && tel && payload && triagem && (
-          <GradeLayout>
+          <GradeLayout mapaLargo={Object.values(motivosMapa).some((l) => (l?.length ?? 0) > 0) || listaRelatos.length > 0}>
             {/* ============ WEARABLE 24 H ============ */}
             <div key="wearable">
             <WearablePlayer
@@ -691,8 +718,6 @@ export function App() {
               onVelocidade={setVelocidade}
               onAvancar={avancarUmaHora}
               onPico={simularPico}
-              onReiniciar={reiniciarDia}
-              onProximoDia={proximoDia}
             />
             </div>
             {/* ============ MAPA CORPORAL ============ */}
@@ -982,18 +1007,6 @@ export function App() {
         </span>
       </footer>
 
-      <RegistroModal
-        aberto={modalRegistro}
-        proximoDia={ultimoDia + 1}
-        ambiente={NOME_AMBIENTE[astronauta?.ambiente_atual ?? ""] ?? astronauta?.ambiente_atual ?? "—"}
-        nomeAstronauta={astronauta ? `${astronauta.id_astronauta} • ${astronauta.nome}` : idAstronauta}
-        referencia={tel ?? null}
-        enviando={registrando}
-        erro={erroRegistro}
-        onFechar={() => setModalRegistro(false)}
-        onRegistrar={(medicoes) => executarRegistro({ medicoes })}
-        onSimularNormal={() => executarRegistro({ simular_anomalia: false })}
-      />
       <SpinoffModal aberto={modalSpinoff} onFechar={() => setModalSpinoff(false)} />
       <RelatoEnviadoPopup relato={relatoEnviado} onFechar={fecharRelatoEnviado} />
       <AlertaCriticoPopup

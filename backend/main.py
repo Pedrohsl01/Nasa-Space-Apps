@@ -244,7 +244,8 @@ def registrar_dia(req: RegistroRequest):
     e chama a IA (groq_analyzer) apenas quando codigo_semaforo > 1.
     """
     try:
-        resultado = engine.registrar_dia(
+        # O dia seguinte é registrado para TODA a tripulação; a IA só analisa o tripulante pedido
+        resultado = engine.registrar_tripulacao(
             req.id_astronauta,
             medicoes=req.medicoes.model_dump() if req.medicoes else None,
             simular_anomalia=req.simular_anomalia,
@@ -263,6 +264,7 @@ def registrar_dia(req: RegistroRequest):
         "dia_registrado": resultado["dia_registrado"],
         "origem": resultado["origem"],
         "cenario_simulado": resultado["cenario_simulado"],
+        "tripulacao_registrada": resultado["tripulacao"],
         "orientacao_ia": orientacao_ia,
         "uso_groq": obter_uso_groq(),
     }

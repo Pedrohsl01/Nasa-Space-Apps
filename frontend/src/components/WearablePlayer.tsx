@@ -1,7 +1,7 @@
 // Wearable ao vivo: as leituras chegam uma hora por vez (como um smartwatch). A linha do tempo mostra só as
 // horas já coletadas; as demais ficam em aberto até o relógio avançar.
 import { useEffect, useState } from "react";
-import { FastForward, Pause, Play, Radio, RotateCcw, SkipForward, Zap } from "lucide-react";
+import { FastForward, Pause, Play, Radio, SkipForward, Zap } from "lucide-react";
 import { Painel } from "./Painel";
 import type { PontoHorario, TelemetriaHoraria } from "../types";
 
@@ -15,8 +15,6 @@ interface WearablePlayerProps {
   onVelocidade: (v: 1 | 2 | 5) => void;
   onAvancar: () => void; // +1h: força a próxima leitura
   onPico: () => void; // próxima leitura com pico agudo simulado
-  onReiniciar: () => void; // recomeça o dia às 00:00
-  onProximoDia: () => void; // fecha o dia e abre o seguinte às 00:00
   className?: string;
 }
 
@@ -78,8 +76,6 @@ export function WearablePlayer({
   onVelocidade,
   onAvancar,
   onPico,
-  onReiniciar,
-  onProximoDia,
   className = "",
 }: WearablePlayerProps) {
   // Micro-oscilação só visual: deixa o "smartwatch" com cara de sinal ao vivo
@@ -112,6 +108,11 @@ export function WearablePlayer({
   const textoBotao =
     "flex items-center gap-1 whitespace-nowrap rounded border px-2 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider disabled:opacity-40";
   const fimDoDia = horaAtual !== null && horaAtual >= 23;
+  // Dia já registrado (anterior ao último): leituras completas, sem coleta
+  const historico = !!dados?.historico;
+  const semColeta = !dados || historico;
+  // Último dia da planilha: completo; o próximo avanço começa o primeiro dia novo às 00:00
+  const ultimoDaPlanilha = !!dados && !historico && dados.coleta_ao_vivo === false;
 
   return (
     <Painel
@@ -127,7 +128,9 @@ export function WearablePlayer({
           />
           {erroSync
             ? "sem sincronia"
-            : dados
+            : historico || ultimoDaPlanilha
+              ? "dia registrado • 24/24 leituras"
+              : dados
               ? `${dados.horas_coletadas ?? pontos.length}/24 leituras • ${tocando ? "coletando" : "pausado"}`
               : "aguardando 1ª leitura"}
         </span>
@@ -138,7 +141,7 @@ export function WearablePlayer({
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => onTocar(!tocando)}
-            disabled={!dados}
+            disabled={semColeta}
             className="rounded border border-cyan-500/70 bg-cyan-500/15 p-1.5 text-cyan-200 hover:bg-cyan-500/25 disabled:opacity-40"
             aria-label={tocando ? "Pausar coleta" : "Iniciar coleta automática"}
             title={tocando ? "Pausar coleta automática" : `Coleta automática: 1 hora a cada ${5 / velocidade} s`}
@@ -160,10 +163,16 @@ export function WearablePlayer({
           </div>
           <button
             onClick={onAvancar}
-            disabled={!dados || coletando}
+            disabled={semColeta || coletando}
             className={botao}
             aria-label="Forçar leitura da próxima hora"
-            title={fimDoDia ? "Próxima leitura vira o dia (00:00 do dia seguinte)" : "+1h: forçar a próxima leitura"}
+            title={
+              ultimoDaPlanilha
+                ? "Começa o próximo dia às 00:00 (registra o dia para a tripulação)"
+                : fimDoDia
+                  ? "Próxima leitura vira o dia (00:00 do dia seguinte)"
+                  : "+1h: forçar a próxima leitura"
+            }
           >
             <SkipForward className="h-3.5 w-3.5" />
           </button>
@@ -190,35 +199,27 @@ export function WearablePlayer({
 
       {/* Ações de simulação */}
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        <button onClick={onAvancar} disabled={!dados || coletando} className={`${textoBotao} border-cyan-700 text-cyan-200 hover:bg-cyan-500/15`}>
+        <button onClick={onAvancar} disabled={semColeta || coletando} className={`${textoBotao} border-cyan-700 text-cyan-200 hover:bg-cyan-500/15`}>
           <FastForward className="h-3 w-3" /> +1h forçar leitura
         </button>
         <button
           onClick={onPico}
-          disabled={!dados || coletando || fimDoDia}
+          disabled={semColeta || coletando || fimDoDia}
           title="A próxima leitura chega com um pico agudo simulado"
           className={`${textoBotao} border-amber-400/70 text-amber-200 hover:bg-amber-500/15`}
         >
           <Zap className="h-3 w-3" /> Próxima leitura com pico
         </button>
-        <span className="ml-auto flex gap-1.5">
-          <button
-            onClick={onReiniciar}
-            disabled={!dados || coletando}
-            title="Zera as leituras do dia e recomeça às 00:00"
-            className={`${textoBotao} border-slate-600 text-slate-300 hover:bg-slate-500/15`}
-          >
-            <RotateCcw className="h-3 w-3" /> Reiniciar dia
-          </button>
-          <button
-            onClick={onProximoDia}
-            disabled={!dados || coletando}
-            title="Fecha o dia (a fadiga final vira residual) e abre o seguinte às 00:00"
-            className={`${textoBotao} border-slate-600 text-slate-300 hover:bg-slate-500/15`}
-          >
-            Próximo dia →
-          </button>
-        </span>
+        {historico && (
+          <span className="font-mono text-[10px] text-slate-400">
+            Dia já registrado: 24 leituras. A coleta ao vivo acontece no último dia da missão.
+          </span>
+        )}
+        {ultimoDaPlanilha && (
+          <span className="font-mono text-[10px] text-slate-400">
+            Último dia da planilha (completo). Play ou +1h começa o dia {(dados?.dia_missao ?? 0) + 1} às 00:00, hora a hora.
+          </span>
+        )}
       </div>
 
       {/* Linha do tempo: só horas coletadas têm cor; o resto do dia fica em aberto */}

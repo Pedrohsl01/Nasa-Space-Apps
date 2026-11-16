@@ -73,21 +73,38 @@
 }
 
 /* ============ Grade dos painéis ============
-   Tela larga: 4 colunas. O mapa ocupa 2 linhas à esquerda; à direita, protocolo em cima e temperatura + dispositivo embaixo.
-   Tela estreita: uma coluna, na ordem abaixo. */
+   Tela estreita: uma coluna, na ordem abaixo.
+   Tela larga (≥ 1024 px): 20 colunas finas (equivalem às 4 de antes). O mapa ocupa metade à esquerda;
+   à direita, protocolo em cima e temperatura + dispositivo embaixo. */
 .grade-painel {
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas: "w" "m" "p" "t" "d" "pr" "ex" "te" "tl";
 }
 @media (min-width: 1024px) {
   .grade-painel {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(20, minmax(0, 1fr));
     grid-template-areas:
-      "w w w w"
-      "m m p p"
-      "m m t d"
-      "pr pr ex ex"
-      "te te tl tl";
+      "w w w w w w w w w w w w w w w w w w w w"
+      "m m m m m m m m m m p p p p p p p p p p"
+      "m m m m m m m m m m t t t t t d d d d d"
+      "pr pr pr pr pr pr pr pr pr pr ex ex ex ex ex ex ex ex ex ex"
+      "te te te te te te te te te te tl tl tl tl tl tl tl tl tl tl";
+  }
+}
+/* Mapa com cartões de alerta/desconforto em tela ≥ 1500 px: o mapa cresce no máximo 20% (12 de 20 colunas,
+   descontado o resto de um vão) para os cartões caberem nas laterais das figuras. Sem cartões, não cresce. */
+@media (min-width: 1500px) {
+  .grade-painel.mapa-largo {
+    grid-template-areas:
+      "w w w w w w w w w w w w w w w w w w w w"
+      "m m m m m m m m m m m m p p p p p p p p"
+      "m m m m m m m m m m m m t t t t d d d d"
+      "pr pr pr pr pr pr pr pr pr pr ex ex ex ex ex ex ex ex ex ex"
+      "te te te te te te te te te te tl tl tl tl tl tl tl tl tl tl";
+  }
+  /* 12 colunas = metade + 2 colunas + 2 vãos; 20% exatos = metade + 2 colunas + 1,8 vão */
+  .grade-painel.mapa-largo > [data-area="m"] {
+    margin-right: calc(var(--spacing) * 4 * 0.2);
   }
 }
 

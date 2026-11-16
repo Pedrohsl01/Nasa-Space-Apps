@@ -3,7 +3,8 @@
 // - Clique trava a seleção (clicar de novo ou no fundo libera) e abre o registro de desconforto.
 // - Alerta de telemetria: preenchimento âmbar/vermelho + retículo tracejado no centroide.
 // - Desconforto relatado: contorno violeta + marcador sólido no centroide.
-// - Cartões laterais (alertas e relatos) ligados por linhas finas aos centroides.
+// - Cartões (alertas e relatos): nas laterais, ligados por linhas finas aos centroides, quando o quadro
+//   tem largura para isso; em quadro estreito, numa grade abaixo das figuras e sem linhas.
 // Contornos e centroides vêm de corpoRegioes.ts (gerado por tools/gerar_mapa_corpo.py).
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import imgMascFrente from "../assets/body/astronauta_masculino_frente.png";
@@ -36,6 +37,9 @@ const IMAGENS: Record<Genero, Record<Vista, string>> = {
 const NOME_VISTA: Record<Vista, string> = { frente: "Frente", costas: "Costas" };
 const COR = { hover: "#22d3ee", atencao: "#f59e0b", critico: "#ef4444", relato: "#a78bfa" };
 const corDoNivel = (n: number) => (n >= 3 ? COR.critico : COR.atencao);
+// Largura mínima do quadro para os cartões ficarem nas laterais sem espremer: 2 colunas de cartão
+// (250–320 px) + as duas figuras + espaços. Abaixo disso, cartões vão para uma grade sob as figuras.
+const LARGURA_LATERAL = 820;
 
 type Cartao =
   | { tipo: "alerta"; chave: string; zona: ZonaCorpo; motivos: Motivo[]; opcoes: Partial<Record<Vista, string[]>> }
@@ -52,6 +56,7 @@ export function BodyMap({ genero, motivos, relatos, selecionada, onSelecionar, o
   const [hover, setHover] = useState<RegiaoSelecionada | null>(null);
   const [balao, setBalao] = useState<Balao | null>(null);
   const [linhas, setLinhas] = useState<Linha[]>([]);
+  const [lateral, setLateral] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   const svgs = useRef<Record<Vista, SVGSVGElement | null>>({ frente: null, costas: null });
   const cartoes = useRef<Map<string, HTMLElement>>(new Map());
@@ -120,6 +125,13 @@ export function BodyMap({ genero, motivos, relatos, selecionada, onSelecionar, o
   const medir = useCallback(() => {
     const c = container.current?.getBoundingClientRect();
     if (!c) return;
+    // A largura do QUADRO (não da janela) decide: o mapa fica num painel de metade da tela no desktop
+    const largo = c.width >= LARGURA_LATERAL;
+    setLateral(largo);
+    if (!largo) {
+      setLinhas([]); // sem linhas conectoras com os cartões empilhados
+      return;
+    }
     const novas: Linha[] = [];
     for (const p of [...postos.esq, ...postos.dir]) {
       const el = cartoes.current.get(p.chave);
@@ -142,6 +154,9 @@ export function BodyMap({ genero, motivos, relatos, selecionada, onSelecionar, o
 
   useLayoutEffect(() => {
     medir();
+  }, [medir, lateral]); // trocar de modo muda a posição dos cartões: mede de novo
+
+  useLayoutEffect(() => {
     const obs = new ResizeObserver(medir);
     if (container.current) obs.observe(container.current);
     window.addEventListener("resize", medir);
@@ -173,13 +188,17 @@ export function BodyMap({ genero, motivos, relatos, selecionada, onSelecionar, o
     const idClip = (id: string) => `clip-${genero}-${vista}-${id}`;
 
     return (
-      <figure className="flex flex-col items-center">
+      <figure className={lateral ? "flex flex-col items-center" : "flex min-w-0 flex-1 flex-col items-center"}>
         <svg
           ref={(el) => {
             svgs.current[vista] = el;
           }}
           viewBox={`0 0 ${dados.largura} ${dados.altura}`}
-          className="h-[22rem] w-auto overflow-visible xl:h-[26rem]"
+          className={
+            lateral
+              ? "h-[clamp(16rem,34cqw,26rem)] w-auto overflow-visible"
+              : "h-auto max-h-[26rem] w-full max-w-[210px] overflow-visible"
+          }
           aria-label={`Mapa corporal do astronauta — vista ${vista === "frente" ? "frontal" : "de costas"}`}
           onMouseLeave={() => {
             setHover(null);
@@ -306,42 +325,47 @@ export function BodyMap({ genero, motivos, relatos, selecionada, onSelecionar, o
         onSelecionar({ vista: p.vista, id: p.regiao.id });
       },
     };
-    const classe = `flex w-full items-start gap-2 rounded-md border bg-[#0a1220]/95 p-2 text-left transition ${
-      p.lado === "dir" ? "flex-row-reverse text-right" : ""
-    } ${ativo ? "scale-[1.03]" : ""}`;
+    // Mesmo layout em todos os cartões: cabeçalho (ícone + categoria/título) e descrição em largura total abaixo
+    const classe = `flex h-auto w-full flex-col gap-1.5 rounded-md border bg-[#0a1220]/95 px-4 py-3 text-left leading-[1.4] transition ${
+      ativo ? "scale-[1.02]" : ""
+    }`;
 
     if (p.tipo === "alerta") {
       const nivel = Math.max(...p.motivos.map((m) => m.nivel));
       const cor = corDoNivel(nivel);
       return (
         <button key={p.chave} {...comum} className={classe} style={{ borderColor: cor, boxShadow: `0 0 ${ativo ? 18 : 10}px ${cor}${ativo ? "66" : "33"}` }}>
-          <OrgaoIcone zona={p.zona} cor={cor} className={`h-10 w-10 shrink-0 ${nivel >= 3 ? "animate-pulse" : ""}`} />
-          <div className="min-w-0">
-            <p className="font-mono text-[9px] uppercase tracking-widest text-slate-400">{ZONAS[p.zona].orgao}</p>
-            <p className="text-[12px] font-bold leading-tight" style={{ color: cor }}>
-              {p.motivos[0].titulo}
-            </p>
-            <p className="mt-0.5 text-[10px] leading-snug text-slate-300">{p.motivos[0].detalhe}</p>
-            {p.motivos.length > 1 && (
-              <p className="mt-0.5 text-[10px] leading-snug text-slate-500">+ {p.motivos.slice(1).map((m) => m.titulo.toLowerCase()).join(", ")}</p>
-            )}
-          </div>
+          <span className="flex items-center gap-2.5">
+            <OrgaoIcone zona={p.zona} cor={cor} className={`h-8 w-8 shrink-0 ${nivel >= 3 ? "animate-pulse" : ""}`} />
+            <span className="min-w-0">
+              <span className="block font-mono text-[9px] uppercase tracking-widest text-slate-400">{ZONAS[p.zona].orgao}</span>
+              <span className="block text-[13px] font-bold leading-[1.3]" style={{ color: cor }}>
+                {p.motivos[0].titulo}
+              </span>
+            </span>
+          </span>
+          <span className="block text-[11px] text-slate-300">{p.motivos[0].detalhe}</span>
+          {p.motivos.length > 1 && (
+            <span className="block text-[11px] text-slate-500">+ {p.motivos.slice(1).map((m) => m.titulo.toLowerCase()).join(", ")}</span>
+          )}
         </button>
       );
     }
     const rel = p.relato;
     return (
       <button key={p.chave} {...comum} className={classe} style={{ borderColor: COR.relato, boxShadow: `0 0 ${ativo ? 16 : 8}px ${COR.relato}${ativo ? "55" : "26"}` }}>
-        <OrgaoIcone zona={zonaDaRegiao(rel.regiaoId)} cor={COR.relato} className="h-10 w-10 shrink-0" />
-        <div className="min-w-0">
-          <p className="font-mono text-[9px] uppercase tracking-widest text-violet-300">Desconforto relatado</p>
-          <p className="text-[12px] font-bold leading-tight text-violet-200">
-            {rel.tipo} • {rel.intensidade}/5
-          </p>
-          <p className="mt-0.5 text-[10px] leading-snug text-slate-300">
-            {rel.nome} ({NOME_VISTA[rel.vista]}){rel.detalhe ? ` — ${rel.detalhe}` : ""}
-          </p>
-        </div>
+        <span className="flex items-center gap-2.5">
+          <OrgaoIcone zona={zonaDaRegiao(rel.regiaoId)} cor={COR.relato} className="h-8 w-8 shrink-0" />
+          <span className="min-w-0">
+            <span className="block font-mono text-[9px] uppercase tracking-widest text-violet-300">Desconforto relatado</span>
+            <span className="block text-[13px] font-bold leading-[1.3] text-violet-200">
+              {rel.tipo} • {rel.intensidade}/5
+            </span>
+          </span>
+        </span>
+        <span className="block text-[11px] text-slate-300">
+          {rel.nome} ({NOME_VISTA[rel.vista]}){rel.detalhe ? ` — ${rel.detalhe}` : ""}
+        </span>
       </button>
     );
   };
@@ -352,11 +376,35 @@ export function BodyMap({ genero, motivos, relatos, selecionada, onSelecionar, o
   const selReg = selecionada ? regiao(genero, selecionada.vista, selecionada.id) : undefined;
   const selChave = selecionada ? chaveRegiao(selecionada.vista, selecionada.id) : "";
   const nenhumCartao = postos.esq.length === 0 && postos.dir.length === 0;
+  const semAlertas = (
+    <p className="rounded border border-emerald-800/60 bg-emerald-500/5 p-2 text-center font-mono text-[10px] text-emerald-300">
+      ✓ Nenhum alerta ou desconforto
+    </p>
+  );
+  const figuras = (
+    <div className={`flex items-end ${lateral ? "gap-3" : "justify-center gap-2 sm:gap-4"}`}>
+      {figura("frente")}
+      {/* Marca d'água entre as figuras: as imagens dos astronautas foram geradas com IA */}
+      <div
+        className="pointer-events-none flex shrink-0 -translate-y-2 select-none flex-col items-center gap-1 self-center text-white/35"
+        role="note"
+        aria-label="Imagens criadas com IA"
+      >
+        <span className="text-lg font-black leading-none">IA</span>
+        <span className="text-center font-mono text-[9px] font-semibold uppercase leading-tight tracking-wider">
+          Criado
+          <br />
+          com IA
+        </span>
+      </div>
+      {figura("costas")}
+    </div>
+  );
 
   return (
     <div className="flex flex-col">
       {/* Clicar no fundo vazio libera a seleção */}
-      <div ref={container} className="relative" onClick={() => selecionada && onSelecionar(null)}>
+      <div ref={container} className="@container relative" onClick={() => selecionada && onSelecionar(null)}>
         <div
           className="pointer-events-none absolute inset-0 opacity-20"
           style={{
@@ -366,24 +414,32 @@ export function BodyMap({ genero, motivos, relatos, selecionada, onSelecionar, o
           }}
         />
 
-        <div className="relative grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 py-1">
-          <div className="flex flex-col gap-2">
-            {postos.esq.map(cartao)}
-            {nenhumCartao && (
-              <p className="rounded border border-emerald-800/60 bg-emerald-500/5 p-2 text-center font-mono text-[10px] text-emerald-300">
-                ✓ Nenhum alerta ou desconforto
-              </p>
+        {lateral ? (
+          // Quadro largo: cartões nas laterais (260–320 px), figuras no centro, sem sobreposição
+          <div className="relative grid grid-cols-[minmax(250px,320px)_auto_minmax(250px,320px)] items-center justify-center gap-3 py-1">
+            <div className="flex flex-col gap-2.5">
+              {postos.esq.map(cartao)}
+              {nenhumCartao && semAlertas}
+            </div>
+            {figuras}
+            <div className="flex flex-col gap-2.5">{postos.dir.map(cartao)}</div>
+          </div>
+        ) : (
+          // Quadro estreito (tablet, celular e o painel de meia tela): figuras em cima, cartões numa grade abaixo
+          <div className="relative flex flex-col gap-3 py-1">
+            {figuras}
+            {nenhumCartao ? (
+              semAlertas
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(260px,100%),1fr))] gap-2.5">
+                {[...postos.esq, ...postos.dir].sort((x, y) => x.regiao.anchor.y - y.regiao.anchor.y).map(cartao)}
+              </div>
             )}
           </div>
-          <div className="flex items-end gap-4">
-            {figura("frente")}
-            {figura("costas")}
-          </div>
-          <div className="flex flex-col gap-2">{postos.dir.map(cartao)}</div>
-        </div>
+        )}
 
         {/* Linhas finas dos cartões até os centroides */}
-        <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+        <svg className={`pointer-events-none absolute inset-0 h-full w-full overflow-visible ${lateral ? "" : "hidden"}`}>
           {linhas.map((l) => {
             const xm = l.x1 + (l.x2 > l.x1 ? 14 : -14);
             return (

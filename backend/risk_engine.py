@@ -1,3 +1,4 @@
+import json
 import os
 import random
 import threading
@@ -399,7 +400,7 @@ def integrar_prontidao(
 
 
 class SpaceHealthRiskEngine:
-    def __init__(self, csv_path: str = BASE_PADRAO):
+    def __init__(self, csv_path: str = BASE_PADRAO, arquivo_ao_vivo: Optional[str] = None):
         self.csv_path = csv_path
         self.df = _ler_base(self.csv_path)
         self._lock = threading.Lock()
@@ -407,6 +408,12 @@ class SpaceHealthRiskEngine:
         self._lock_sessoes = threading.RLock()
         self._sessoes: Dict[str, Dict[str, Any]] = {}
         self._fechamentos: Dict[str, Dict[str, Any]] = {}
+        # Dia ao vivo salvo em disco (padrão: data/telemetria_ao_vivo.json ao lado da base; "" desliga)
+        self._arquivo_ao_vivo = (
+            os.path.join(os.path.dirname(os.path.abspath(csv_path)), "telemetria_ao_vivo.json")
+            if arquivo_ao_vivo is None else arquivo_ao_vivo
+        )
+        self._carregar_ao_vivo()
 
     def reload_csv(self):
         self.df = _ler_base(self.csv_path)
@@ -797,11 +804,14 @@ class SpaceHealthRiskEngine:
         return desgaste * 0.5 ** (float(atual["sono_horas"]) / 6.0)
 
     # ------------------------------------------------------------------
-    # Wearable AO VIVO: uma sessão por tripulante, uma leitura por vez
-    #   reiniciar_dia  -> só a leitura das 00:00 e a prontidão base do dia
-    #   avancar_hora   -> gera a leitura h+1, roda UM passo do integrador; depois das 23:00 vira o dia
-    #   estado_ao_vivo -> sincroniza eventos (mapa/chat) e devolve o estado, sem gerar leitura
-    # Fica em memória: reiniciar o servidor recomeça o dia às 00:00.
+    # Wearable AO VIVO
+    #   - Dias da PLANILHA: mostram a simulação original completa (24 leituras de gerar_dia), como sempre.
+    #   - Dias simulados pelos botões (Simular dia de alerta etc.): completos, como os da planilha.
+    #   - Dias NOVOS (abertos pela virada do relógio depois das 23:00): começam às 00:00 com uma
+    #     leitura e cada tick gera só a próxima hora. Só o dia novo mais recente recebe leituras.
+    #   - No último dia, o avanço depois das 23:00 registra o dia seguinte para TODA a tripulação
+    #     e abre o novo dia às 00:00 (se o último dia é da planilha, o primeiro avanço já faz isso).
+    # Dias novos e leituras ficam em data/telemetria_ao_vivo.json: reiniciar o servidor continua de onde parou.
     # ------------------------------------------------------------------
 
     def _df_ast(self, id_astronauta: str) -> pd.DataFrame:
@@ -810,27 +820,94 @@ class SpaceHealthRiskEngine:
             raise ValueError(f"Astronauta {id_astronauta} não encontrado na base.")
         return df_ast
 
-    def _abrir_dia(self, id_astronauta: str, dia_missao: int) -> Dict[str, Any]:
+    def _ultimo_dia(self, id_astronauta: str) -> int:
+        return int(self._df_ast(id_astronauta)["dia_missao"].max())
+
+    def _linha_dia(self, id_astronauta: str, dia_missao: int) -> tuple:
         df_ast = self._df_ast(id_astronauta)
         linha = df_ast[df_ast["dia_missao"] == dia_missao]
         if linha.empty:
             raise ValueError(f"Dia de missão {dia_missao} não encontrado para {id_astronauta}.")
-        atual = linha.iloc[0]
+        return df_ast, linha.iloc[0]
+
+    # ---------- Persistência do dia ao vivo ----------
+    def _carregar_ao_vivo(self) -> None:
+        self._persistido: Dict[str, Any] = {"sessoes": {}, "dias_vividos": {}, "dias_novos": {}}
+        if not self._arquivo_ao_vivo or not os.path.exists(self._arquivo_ao_vivo):
+            return
+        try:
+            with open(self._arquivo_ao_vivo, encoding="utf-8") as f:
+                dados = json.load(f)
+            self._persistido["sessoes"] = dados.get("sessoes", {})
+            self._persistido["dias_vividos"] = dados.get("dias_vividos", {})
+            self._persistido["dias_novos"] = {k: [int(d) for d in v] for k, v in dados.get("dias_novos", {}).items()}
+            self._fechamentos = {k: {"dia": int(v["dia"]), "desgaste": float(v["desgaste"])} for k, v in dados.get("fechamentos", {}).items()}
+        except (OSError, ValueError, KeyError, TypeError):
+            pass  # arquivo corrompido: começa do zero sem derrubar a API
+
+    def _salvar_ao_vivo(self) -> None:
+        if not self._arquivo_ao_vivo:
+            return
+        for id_ast, s in list(self._sessoes.items()):
+            self._persistido["sessoes"][id_ast] = {
+                "dia": s["dia"], "pontos": s["pontos"], "desconfortos": s["desconfortos"], "contramedidas": s["contramedidas"],
+            }
+        dados = {**self._persistido, "fechamentos": self._fechamentos}
+        tmp = self._arquivo_ao_vivo + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(dados, f, ensure_ascii=False)
+            os.replace(tmp, self._arquivo_ao_vivo)
+        except OSError:
+            pass  # sem disco: o dia ao vivo continua valendo em memória
+
+    def _eh_dia_novo(self, id_astronauta: str, dia: int) -> bool:
+        """Dia registrado pelo app depois do último dia da planilha (coleta hora a hora)."""
+        return int(dia) in self._persistido["dias_novos"].get(id_astronauta, [])
+
+    def _marcar_dia_novo(self, id_astronauta: str, dia: int) -> None:
+        dias = self._persistido["dias_novos"].setdefault(id_astronauta, [])
+        if int(dia) not in dias:
+            dias.append(int(dia))
+        self._salvar_ao_vivo()
+
+    def _ao_vivo_agora(self, id_astronauta: str) -> bool:
+        """O último dia do tripulante é um dia novo (em coleta)?"""
+        return self._eh_dia_novo(id_astronauta, self._ultimo_dia(id_astronauta))
+
+    # ---------- Sessão do dia ao vivo ----------
+    def _nova_sessao(self, id_astronauta: str, dia: int, pontos: Optional[List[Dict[str, Any]]] = None,
+                     desconfortos=None, contramedidas=None) -> Dict[str, Any]:
+        df_ast, atual = self._linha_dia(id_astronauta, dia)
         residual = self._fadiga_residual(id_astronauta, df_ast, atual)
         plano = planejar_dia(atual.to_dict())
-        integrador = IntegradorProntidao(atual, residual, self._delta_rad_7d(df_ast, atual))
-        primeira = iniciar_leitura(plano, desgaste=residual)
-        integrador.passo(primeira)
         sessao = {
             "id_astronauta": id_astronauta,
-            "dia": int(dia_missao),
+            "dia": int(dia),
             "plano": plano,
-            "pontos": [primeira],
-            "integrador": integrador,
+            "pontos": pontos or [iniciar_leitura(plano, desgaste=residual)],
+            "integrador": IntegradorProntidao(atual, residual, self._delta_rad_7d(df_ast, atual)),
             "desconfortos": [],
             "contramedidas": [],
         }
+        sessao["desconfortos"], sessao["contramedidas"] = self._normalizar_eventos(desconfortos, contramedidas)
+        for p in sessao["pontos"]:
+            sessao["integrador"].passo(p, sessao["desconfortos"], sessao["contramedidas"])
+        return sessao
+
+    def _sessao_ao_vivo(self, id_astronauta: str) -> Dict[str, Any]:
+        """Sessão do último dia registrado: em memória, salva no arquivo, ou nova às 00:00."""
+        ultimo = self._ultimo_dia(id_astronauta)
+        sessao = self._sessoes.get(id_astronauta)
+        if sessao and sessao["dia"] == ultimo:
+            return sessao
+        salvo = self._persistido["sessoes"].get(id_astronauta)
+        if salvo and int(salvo["dia"]) == ultimo and salvo.get("pontos"):
+            sessao = self._nova_sessao(id_astronauta, ultimo, salvo["pontos"], salvo.get("desconfortos"), salvo.get("contramedidas"))
+        else:
+            sessao = self._nova_sessao(id_astronauta, ultimo)
         self._sessoes[id_astronauta] = sessao
+        self._salvar_ao_vivo()
         return sessao
 
     @staticmethod
@@ -844,31 +921,74 @@ class SpaceHealthRiskEngine:
                      key=lambda c: (c["hora"], c["texto"]))
         return des, con
 
-    def _sincronizar_eventos(self, sessao: Dict[str, Any], desconfortos, contramedidas) -> None:
+    def _sincronizar_eventos(self, sessao: Dict[str, Any], desconfortos, contramedidas) -> bool:
         """Eventos novos/alterados: re-integra as leituras JÁ coletadas (elas não mudam; só a prontidão)."""
         des, con = self._normalizar_eventos(desconfortos, contramedidas)
         if des == sessao["desconfortos"] and con == sessao["contramedidas"]:
-            return
+            return False
         sessao["desconfortos"], sessao["contramedidas"] = des, con
         antigo = sessao["integrador"]
         novo = IntegradorProntidao(antigo.atual, antigo.residual, antigo.delta_rad_7d)
         for p in sessao["pontos"]:
             novo.passo(p, des, con)
         sessao["integrador"] = novo
+        return True
 
-    def _virar_dia(self, sessao: Dict[str, Any]) -> tuple:
-        """Fecha o dia (guarda o desgaste final) e abre o seguinte às 00:00; sem próximo registro, simula um dia normal."""
+    def _dia_registrado(self, id_astronauta: str, dia: int, desconfortos=None, contramedidas=None) -> Dict[str, Any]:
+        """Dia completo (24 leituras): as vividas ao vivo, se o dia foi novo; senão, a simulação original da planilha."""
+        _, atual = self._linha_dia(id_astronauta, dia)
+        vividos = self._persistido["dias_vividos"].get(id_astronauta, {}).get(str(dia))
+        pontos = vividos if vividos and len(vividos) == 24 else gerar_dia(atual.to_dict())["pontos"]
+        return self._nova_sessao(id_astronauta, dia, pontos, desconfortos, contramedidas)
+
+    def registrar_tripulacao(
+        self,
+        id_principal: str,
+        medicoes: Optional[Dict[str, Any]] = None,
+        simular_anomalia: bool = False,
+        ambiente: Optional[str] = None,
+        ao_vivo: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        ao_vivo=True (virada do relógio do wearable): os dias criados são coletados hora a hora a partir das 00:00.
+        ao_vivo=False (botões de simular/registrar): os dias criados aparecem completos, com a simulação do dia.
+        Registra o dia seguinte do tripulante principal (manual ou simulado) e SIMULA o dia seguinte dos demais
+        (mesmo tipo de simulação: normal ou com anomalia; registro manual -> os demais ganham um dia normal).
+        """
+        resultado = self.registrar_dia(id_principal, medicoes, simular_anomalia, ambiente, ao_vivo=ao_vivo)
+        outros: List[Dict[str, Any]] = []
+        for a in self.get_astronauts():
+            if a["id_astronauta"] == id_principal:
+                continue
+            try:
+                r = self.registrar_dia(a["id_astronauta"], None, simular_anomalia if medicoes is None else False, ambiente, ao_vivo=ao_vivo)
+                triagem = r["analise"]["payload_compacto"]["triagem_python"]
+                outros.append({
+                    "id_astronauta": a["id_astronauta"], "nome": a["nome"], "dia_registrado": r["dia_registrado"],
+                    "cenario_simulado": r["cenario_simulado"], "codigo_semaforo": triagem["codigo_semaforo"],
+                })
+            except (ValueError, RuntimeError) as e:
+                outros.append({"id_astronauta": a["id_astronauta"], "nome": a["nome"], "erro": str(e)})
+        resultado["tripulacao"] = outros
+        return resultado
+
+    def _virar_dia(self, sessao: Dict[str, Any], vivido: bool = True) -> tuple:
+        """Fecha o último dia (desgaste final e, se foi vivido ao vivo, as 24 leituras) e abre o seguinte às 00:00."""
         id_ast = sessao["id_astronauta"]
         self._fechamentos[id_ast] = {"dia": sessao["dia"], "desgaste": sessao["integrador"].desgaste}
+        if vivido:
+            self._persistido["dias_vividos"].setdefault(id_ast, {})[str(sessao["dia"])] = sessao["pontos"]
         proximo = sessao["dia"] + 1
+        tripulacao: List[Dict[str, Any]] = []
         registrado = False
-        if proximo not in set(self._df_ast(id_ast)["dia_missao"].astype(int)):
-            self.registrar_dia(id_ast, medicoes=None, simular_anomalia=False)
+        if proximo > self._ultimo_dia(id_ast):
+            tripulacao = self.registrar_tripulacao(id_ast, None, False, ao_vivo=True)["tripulacao"]
             registrado = True
-        nova = self._abrir_dia(id_ast, proximo)
-        return nova, {"de": sessao["dia"], "para": proximo, "registrado": registrado}
+        self._sessoes.pop(id_ast, None)
+        nova = self._sessao_ao_vivo(id_ast)
+        return nova, {"de": sessao["dia"], "para": nova["dia"], "registrado": registrado, "tripulacao": tripulacao}
 
-    def _estado(self, sessao: Dict[str, Any], virada: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _estado(self, sessao: Dict[str, Any], virada: Optional[Dict[str, Any]] = None, historico: bool = False) -> Dict[str, Any]:
         df_ast = self._df_ast(sessao["id_astronauta"])
         plano = sessao["plano"]
         pontos = sessao["pontos"]
@@ -890,12 +1010,33 @@ class SpaceHealthRiskEngine:
             "ultima_leitura": atual["rotulo"],
             "horas_coletadas": len(pontos),
             "dia_completo": hora >= 23,
+            "historico": historico,
+            # true: dia novo em coleta hora a hora; false: dia completo (da planilha ou anterior ao último)
+            "coleta_ao_vivo": not historico and self._eh_dia_novo(sessao["id_astronauta"], sessao["dia"]),
             "coach_exercicio": coach_exercicio(df_ast, sessao["dia"], hora, tel_coach),
             "exames_sugeridos": exames_sugeridos(df_ast, sessao["dia"], tel_coletada),
             "prontidao": sessao["integrador"].resultado(),
             "virada": virada,
             "nota": "Leituras SIMULADAS geradas hora a hora (smartwatch); limiares de demonstração (a confirmar).",
         }
+
+    def estado_ao_vivo(
+        self,
+        id_astronauta: str,
+        dia_missao: int,
+        desconfortos: Optional[List[Dict[str, Any]]] = None,
+        contramedidas: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Dia da planilha ou anterior ao último: completo. Último dia NOVO: retoma a coleta e aplica os eventos do mapa/chat."""
+        with self._lock_sessoes:
+            ultimo = self._ultimo_dia(id_astronauta)
+            if int(dia_missao) < ultimo or not self._ao_vivo_agora(id_astronauta):
+                dia = self._dia_registrado(id_astronauta, int(dia_missao), desconfortos, contramedidas)
+                return self._estado(dia, historico=int(dia_missao) < ultimo)
+            sessao = self._sessao_ao_vivo(id_astronauta)
+            if self._sincronizar_eventos(sessao, desconfortos, contramedidas):
+                self._salvar_ao_vivo()
+            return self._estado(sessao)
 
     def reiniciar_dia(
         self,
@@ -906,38 +1047,25 @@ class SpaceHealthRiskEngine:
         contramedidas: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
-        Começa um dia às 00:00 com UMA leitura. proximo=True fecha o dia ao vivo e abre o seguinte;
-        sem dia_missao, reinicia o dia da sessão (ou o último registrado).
-        Os eventos enviados valem para o dia aberto (normalmente só os do mesmo dia).
+        Recomeça às 00:00 o dia AO VIVO (último registrado) — dias anteriores não são zerados.
+        proximo=True fecha o dia ao vivo e abre o seguinte (registrando-o para a tripulação, se preciso).
         """
         with self._lock_sessoes:
-            sessao = self._sessoes.get(id_astronauta)
-            virada = None
+            ultimo = self._ultimo_dia(id_astronauta)
+            if dia_missao is not None and int(dia_missao) != ultimo:
+                raise ValueError(f"Só o dia ao vivo ({ultimo}) pode ser reiniciado; os dias anteriores ficam como foram registrados.")
             if proximo:
-                if sessao is None:
-                    sessao = self._abrir_dia(id_astronauta, int(self._df_ast(id_astronauta)["dia_missao"].max()))
-                sessao, virada = self._virar_dia(sessao)
+                if self._ao_vivo_agora(id_astronauta):
+                    sessao, virada = self._virar_dia(self._sessao_ao_vivo(id_astronauta))
+                else:
+                    sessao, virada = self._virar_dia(self._dia_registrado(id_astronauta, ultimo), vivido=False)
+            elif not self._ao_vivo_agora(id_astronauta):
+                raise ValueError(f"O dia {ultimo} é da planilha: a simulação dele é a original e não é reiniciada.")
             else:
-                if dia_missao is None:
-                    dia_missao = sessao["dia"] if sessao else int(self._df_ast(id_astronauta)["dia_missao"].max())
-                sessao = self._abrir_dia(id_astronauta, int(dia_missao))
-                self._sincronizar_eventos(sessao, desconfortos, contramedidas)
+                sessao, virada = self._nova_sessao(id_astronauta, ultimo, None, desconfortos, contramedidas), None
+                self._sessoes[id_astronauta] = sessao
+            self._salvar_ao_vivo()
             return self._estado(sessao, virada)
-
-    def estado_ao_vivo(
-        self,
-        id_astronauta: str,
-        dia_missao: int,
-        desconfortos: Optional[List[Dict[str, Any]]] = None,
-        contramedidas: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
-        """Retoma a sessão do dia (ou abre às 00:00 se não houver) e aplica os eventos do mapa/chat."""
-        with self._lock_sessoes:
-            sessao = self._sessoes.get(id_astronauta)
-            if sessao is None or sessao["dia"] != int(dia_missao):
-                sessao = self._abrir_dia(id_astronauta, int(dia_missao))
-            self._sincronizar_eventos(sessao, desconfortos, contramedidas)
-            return self._estado(sessao)
 
     def avancar_hora(
         self,
@@ -948,17 +1076,23 @@ class SpaceHealthRiskEngine:
         pico: bool = False,
     ) -> Dict[str, Any]:
         """
-        Tick do smartwatch: gera só a leitura h+1 (contínua com h e reagindo aos eventos ativos),
+        Tick do smartwatch no dia ao vivo: gera só a leitura h+1 (contínua com h e reagindo aos eventos ativos),
         roda um passo do integrador de prontidão e devolve o estado. Depois das 23:00, vira o dia.
         """
         with self._lock_sessoes:
-            sessao = self._sessoes.get(id_astronauta)
-            if sessao is None or (dia_missao is not None and sessao["dia"] != int(dia_missao)):
-                dia = dia_missao if dia_missao is not None else int(self._df_ast(id_astronauta)["dia_missao"].max())
-                sessao = self._abrir_dia(id_astronauta, int(dia))
+            ultimo = self._ultimo_dia(id_astronauta)
+            if dia_missao is not None and int(dia_missao) < ultimo:
+                raise ValueError(f"O dia {dia_missao} já está registrado (completo); a coleta ao vivo é no dia {ultimo}.")
+            if not self._ao_vivo_agora(id_astronauta):
+                # Último dia é da planilha (completo): o avanço começa o primeiro dia novo às 00:00
+                sessao, virada = self._virar_dia(self._dia_registrado(id_astronauta, ultimo), vivido=False)
+                self._salvar_ao_vivo()
+                return self._estado(sessao, virada)
+            sessao = self._sessao_ao_vivo(id_astronauta)
             self._sincronizar_eventos(sessao, desconfortos, contramedidas)
             if sessao["pontos"][-1]["hora"] >= 23:
                 sessao, virada = self._virar_dia(sessao)
+                self._salvar_ao_vivo()
                 return self._estado(sessao, virada)
             integrador = sessao["integrador"]
             leitura = gerar_proxima_leitura_horaria({
@@ -971,7 +1105,9 @@ class SpaceHealthRiskEngine:
             })
             sessao["pontos"].append(leitura)
             integrador.passo(leitura, sessao["desconfortos"], sessao["contramedidas"])
+            self._salvar_ao_vivo()
             return self._estado(sessao)
+
 
     # ------------------------------------------------------------------
     # Registro de um novo dia (manual ou simulado) e persistência na base
@@ -1028,9 +1164,11 @@ class SpaceHealthRiskEngine:
         medicoes: Optional[Dict[str, Any]] = None,
         simular_anomalia: bool = False,
         ambiente: Optional[str] = None,
+        ao_vivo: bool = False,
     ) -> Dict[str, Any]:
         """
         Cria o registro de (último dia + 1) para o astronauta.
+        ao_vivo=True: o dia é marcado como NOVO (coleta hora a hora); senão aparece completo, como os da planilha.
         - medicoes informado: registro manual.
         - medicoes = None: simulação automática (normal ou com anomalia).
         Copia os campos base_* do último dia, calcula a triagem com as regras deste motor,
@@ -1094,6 +1232,8 @@ class SpaceHealthRiskEngine:
                 self.df["codigo_semaforo"] = self.df["codigo_semaforo"].astype(int)
                 self.df = self.df[df_anterior.columns]
                 _gravar_base(self.df, self.csv_path)
+                if ao_vivo:
+                    self._marcar_dia_novo(id_astronauta, novo_dia)
             except Exception:
                 self.df = df_anterior  # não deixa o registro pela metade na memória
                 raise
