@@ -52,12 +52,13 @@ const COR_SYNC = {
   erro: "bg-red-500",
 };
 
-export function ProntidaoHUD({ prontidao, xp, ganho, sinais, sincronia }: {
+export function ProntidaoHUD({ prontidao, xp, ganho, sinais, sincronia, onVerProtocolo }: {
   prontidao: ProntidaoCumulativa | null;
   xp: number;
   ganho: { id: number; texto: string } | null;
   sinais: SinalResumo[];
   sincronia: Sincronia;
+  onVerProtocolo?: () => void; // leva ao painel de protocolo (motivo e contramedidas)
 }) {
   const cor = COR[prontidao?.faixa ?? "apto"];
   const aptidao = prontidao?.aptidao_eva ?? 0;
@@ -80,9 +81,24 @@ export function ProntidaoHUD({ prontidao, xp, ganho, sinais, sincronia }: {
       {/* Barra segmentada (Aptidão EVA) */}
       <div className="relative min-w-64 flex-1">
         <div className="mb-1 flex flex-wrap items-baseline gap-x-2 font-mono text-[10px] uppercase tracking-[0.2em]">
-          <span className="text-slate-400">Aptidão EVA</span>
+          {/* Primeira aparição da sigla na tela: por extenso */}
+          <span className="text-slate-400">
+            Aptidão para atividade extraveicular <span className="text-slate-300">(EVA)</span>
+          </span>
           <span className={`text-sm font-bold tabular-nums ${cor.texto}`}>{prontidao ? `${aptidao}%` : "—"}</span>
-          {prontidao && <span className={`font-semibold ${cor.texto}`}>// {prontidao.rotulo_eva}</span>}
+          {prontidao && prontidao.status_eva === "INAPTO" ? (
+            // Mensagem única de suspensão: o mesmo status que o painel de protocolo mostra
+            <button
+              type="button"
+              onClick={onVerProtocolo}
+              title={prontidao.bloqueios.map((b) => `${b.nivel}: ${b.motivo}`).join("\n")}
+              className="rounded border border-red-500/70 bg-red-500/15 px-2 py-0.5 font-semibold normal-case tracking-normal text-red-200 hover:bg-red-500/25"
+            >
+              ⛔ Atividade extraveicular suspensa · <span className="underline underline-offset-2">ver motivo e protocolo</span>
+            </button>
+          ) : (
+            prontidao && <span className={`font-semibold ${cor.texto}`}>// {prontidao.rotulo_eva}</span>
+          )}
           {prontidao && prontidao.aptidao_eva < prontidao.prontidao_atual && (
             <span className="normal-case tracking-normal text-slate-500">(prontidão {prontidao.prontidao_atual}%, com teto de segurança)</span>
           )}

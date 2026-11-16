@@ -202,7 +202,8 @@ def predicao_tendencia(df_ast: pd.DataFrame, dia: int) -> Dict[str, Any]:
         "nivel": nivel,
         "resumo": (
             f"{len(riscos)} risco(s) emergente(s) na janela de {len(jan)} dias."
-            if riscos else f"Nenhuma tendência de risco nos últimos {len(jan)} dias."
+            # "sem piora gradual" (tendência), não "sem risco": um alerta do dia pode estar ativo mesmo assim
+            if riscos else f"Sem piora gradual detectada nos últimos {len(jan)} dias."
         ),
     }
 

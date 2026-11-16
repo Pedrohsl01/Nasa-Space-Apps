@@ -109,6 +109,10 @@ JANELA_CONTRAMEDIDA_H = 2  # horas em que a contramedida acelera a recuperação
 BONUS_CONTRAMEDIDA_FRAC = 0.15  # fração do desgaste de carga removida na hora em que é aplicada
 BONUS_CONTRAMEDIDA_MAX = 4.0  # pontos por contramedida
 CONTRAMEDIDAS_COM_BONUS_DIA = 3  # bônus imediato limitado (o resto só acelera λ)
+# Teto do desgaste acumulado (mesma escala 0–100 da prontidão): um dia inteiro em alerta crítico
+# satura aqui em vez de crescer sem limite (antes chegava a ~260 pontos, ilegível no HUD).
+# 100 = o desgaste pode consumir no máximo toda a prontidão, nunca "mais que tudo".
+DESGASTE_MAX = 100.0
 LIMIAR_SPO2_EVA = 90.0
 LIMIAR_SPO2_RESTRICAO = 94.0
 
@@ -159,6 +163,18 @@ def _bloqueios_do_dia(atual: pd.Series, delta_rad_7d: float) -> List[Dict[str, A
         b.append({"nivel": "RESTRICAO", "motivo": f"PA do dia {int(atual['pa_sistolica'])}/{int(atual['pa_diastolica'])} mmHg"})
     if delta_rad_7d >= 25.0:
         b.append({"nivel": "RESTRICAO", "motivo": f"Dose de radiação alta na semana (+{delta_rad_7d} mSv)"})
+
+    # Mesma regra do protocolo (avaliacao_operacional): a triagem do dia manda na EVA, para o topo
+    # nunca dizer "apto" enquanto o protocolo manda suspender ou buscar abrigo.
+    codigo = atual.get("codigo_semaforo")
+    categorias = [c for c in str(atual.get("categoria_risco") or "").split(";") if c and c != "Nominal" and c != "nan"]
+    if not _vazio(codigo):
+        if int(codigo) >= 3:
+            b.append({"nivel": "INAPTO", "motivo": f"Alerta crítico do dia ({', '.join(categorias) or 'triagem'}): suspender EVA"})
+        elif int(codigo) == 2 and set(categorias) & {"Cardiovascular", "Imunológico", "Metabólico"}:
+            b.append({"nivel": "RESTRICAO", "motivo": f"Alerta do dia ({', '.join(categorias)}): restringir esforço"})
+    if "Radiação" in categorias and not any("radiação" in x["motivo"].lower() for x in b):
+        b.append({"nivel": "RESTRICAO", "motivo": "Radiação em alerta: buscar abrigo blindado"})
     return b
 
 
@@ -270,6 +286,11 @@ class IntegradorProntidao:
 
         self.d_esf += delta["esforco"]
         self.d_carga += delta["carga"]
+        if self.desgaste > DESGASTE_MAX:
+            # Satura no teto mantendo a proporção esforço/carga
+            fator = DESGASTE_MAX / self.desgaste
+            self.d_esf *= fator
+            self.d_carga *= fator
 
         # ---------- P_agudo(t): só o que está acontecendo agora ----------
         agudos: List[Dict[str, Any]] = []

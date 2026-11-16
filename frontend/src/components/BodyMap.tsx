@@ -392,7 +392,7 @@ export function BodyMap({ genero, motivos, relatos, selecionada, onSelecionar, o
       >
         <span className="text-lg font-black leading-none">IA</span>
         <span className="text-center font-mono text-[9px] font-semibold uppercase leading-tight tracking-wider">
-          Criado
+          Imagem criada
           <br />
           com IA
         </span>

@@ -3,7 +3,7 @@ import json
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as TempoEsgotado
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -90,6 +90,51 @@ Regras de resposta:
 """
 
 
+# Por que cada categoria acontece no espaço (modo local, sem IA)
+POR_QUE_CATEGORIA = {
+    "Cardiovascular": "Sem gravidade, os fluidos sobem para o tórax e a cabeça e o coração se adapta a outra carga; pressão e FC acima da base indicam esforço cardiovascular extra.",
+    "Imunológico": "Confinamento, estresse e radiação enfraquecem a imunidade e podem reativar vírus latentes; febre e FC alta sugerem infecção ou inflamação.",
+    "Radiação": "Fora da proteção da Terra, a radiação cósmica e solar se acumula: a dose é cumulativa e aumenta o risco de câncer e de dano biológico a longo prazo.",
+    "Neuro-ocular": "O desvio de fluidos para a cabeça aumenta a pressão no olho e no nervo óptico (SANS), o que pode turvar a visão.",
+    "Comportamental": "Isolamento, confinamento e ciclo de luz alterado desregulam o sono e o humor, reduzindo atenção e desempenho.",
+    "Musculoesquelético": "Com pouca carga mecânica, ossos e músculos perdem massa rapidamente se o treino resistido cai.",
+    "Metabólico": "Mudanças de dieta, sono e atividade alteram o controle da glicose no confinamento.",
+}
+
+
+def _frases_indicadores(ind: Dict[str, Any]) -> List[str]:
+    """Frases curtas 'valor x linha de base' a partir de indicadores_em_alerta (mais relevantes primeiro)."""
+    f: List[str] = []
+    temp = ind.get("temperatura_c")
+    if isinstance(temp, dict):
+        febre = float(temp.get("valor_dia", 0) or 0) >= 38.1
+        f.append(f"{'febre' if febre else 'temperatura elevada'} de {temp.get('valor_dia')} °C (base {temp.get('linha_base')} °C)")
+    fc = ind.get("fc_repouso")
+    if isinstance(fc, dict):
+        f.append(f"FC de repouso {fc.get('valor_dia')} bpm ({fc.get('variacao_dia')} da base {fc.get('linha_base')})")
+    pa = ind.get("pressao_arterial")
+    if isinstance(pa, dict):
+        f.append(f"pressão {pa.get('valor_dia')} (base {pa.get('linha_base')})")
+    if isinstance(ind.get("sintoma_neuro_ocular"), str):
+        f.append("visão turva" if ind["sintoma_neuro_ocular"] == "Visao turva" else "pressão ocular")
+    glic = ind.get("glicemia_mg_dl")
+    if isinstance(glic, dict):
+        f.append(f"glicemia {glic.get('valor_dia')} mg/dL (base {glic.get('linha_base')})")
+    sono = ind.get("sono_horas")
+    if isinstance(sono, dict):
+        f.append(f"sono de {sono.get('valor_dia')} h (base {sono.get('linha_base')} h)")
+    rad = ind.get("radiacao_acumulada_msv")
+    if isinstance(rad, dict):
+        f.append(f"radiação +{rad.get('incremento_7_dias_msv')} mSv em 7 dias (total {rad.get('valor_dia')} mSv)")
+    humor = ind.get("humor")
+    if isinstance(humor, dict):
+        f.append(f"humor {humor.get('valor_dia')}/5")
+    treino = ind.get("treino_resistido_min")
+    if isinstance(treino, dict):
+        f.append(f"treino médio de {treino.get('media_ultimos_7_dias')} min/dia (meta 60)")
+    return f
+
+
 def _gerar_fallback_offline(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Garante operação 100% autônoma mesmo sem internet ou em dias nominais (Verde)."""
     triagem = payload["triagem_python"]
@@ -130,9 +175,23 @@ def _gerar_fallback_offline(payload: Dict[str, Any]) -> Dict[str, Any]:
         else "ATENÇÃO LOCAL (Nível 2): Gerenciar a bordo com as contramedidas acima, notificar o comandante/tripulação e reavaliar em 24 horas."
     )
 
+    # Resumo montado com os próprios dados do dia (valor x linha de base), sem depender da IA
+    frases = _frases_indicadores(payload.get("indicadores_em_alerta") or {})
+    nivel = "risco crítico" if semaforo == 3 else "atenção"
+    cats = [c for c in str(categorias).split(";") if c and c != "Nominal"]
+    if frases:
+        texto = "; ".join(frases[:3])
+        resumo = f"{texto[0].upper()}{texto[1:]}: {nivel} ({', '.join(cats).lower()})."
+    else:
+        resumo = f"Alerta {'crítico' if semaforo == 3 else 'de atenção'} nas categorias: {', '.join(cats)}."
+    porques = [POR_QUE_CATEGORIA[c] for c in cats if c in POR_QUE_CATEGORIA]
+    explicacao = (" ".join(porques) + " " if porques else "") + (
+        f"Comparação feita com a sua linha de base individual dos últimos 7 dias, na fase '{ambiente}'."
+    )
+
     return {
-        "resumo_alerta": f"Alerta {'Crítico' if semaforo == 3 else 'de Atenção'} detectado nas categorias: {categorias}.",
-        "explicacao_fisiologica": f"A análise determinística de 7 dias identificou desvio sustentado em relação à sua linha de base individual durante a fase '{ambiente}'.",
+        "resumo_alerta": resumo,
+        "explicacao_fisiologica": explicacao,
         "acao_imediata_astronauta": acoes or ["Repetir medições vitais em 1 hora e manter hidratação."],
         "nivel_escalonamento": escalonamento
     }
@@ -179,8 +238,11 @@ def _analise_local(payload: Dict[str, Any], motivo: str = "") -> Dict[str, Any]:
     resultado["acao_imediata_astronauta"] = list(resultado.get("acao_imediata_astronauta", [])) + _acoes_desconforto(payload)
     resumo = payload.get("avaliacao", {}).get("resumo_tecnico")
     if resumo:
-        # A análise local usa o resumo técnico do motor (valores reais do dia)
-        resultado["explicacao_fisiologica"] = resumo
+        # A análise local usa o resumo técnico do motor (valores reais do dia); em alerta, o "por quê"
+        # fisiológico de cada categoria vem antes, para a tripulação entender a decisão sem a IA
+        cats = [c for c in str(payload["triagem_python"]["categoria_risco"]).split(";") if c in POR_QUE_CATEGORIA]
+        porques = " ".join(POR_QUE_CATEGORIA[c] for c in cats)
+        resultado["explicacao_fisiologica"] = f"{porques} Dados do dia: {resumo}" if porques else resumo
     return _finalizar(resultado, "motor_local", payload, motivo)
 
 

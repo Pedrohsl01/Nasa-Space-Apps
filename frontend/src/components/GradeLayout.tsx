@@ -6,6 +6,7 @@ import { Children, cloneElement, isValidElement, type ReactElement } from "react
 const AREA: Record<string, string> = {
   wearable: "w",
   mapa: "m",
+  missoes: "mi", // Missões do dia, logo abaixo do mapa corporal
   protocolo: "p",
   temperatura: "t",
   dispositivo: "d",
