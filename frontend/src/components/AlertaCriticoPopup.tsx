@@ -4,11 +4,20 @@ import { ShieldAlert } from "lucide-react";
 import { ZONAS } from "./zonasCorpo";
 import type { OrgaoEmAlerta } from "./motivosAlerta";
 
-export function AlertaCriticoPopup({ orgaos, tripulante, dia, onFechar }: {
+const TEXTO_EVA = {
+  INAPTO: "⛔ Atividade extraveicular (EVA) suspensa",
+  RESTRICAO: "Atividade extraveicular (EVA) restrita: só esforço leve",
+  APTO: "Atividade extraveicular (EVA) liberada",
+} as const;
+
+export function AlertaCriticoPopup({ orgaos, tripulante, dia, statusEva, acoes = [], onFechar, onVerDecisao }: {
   orgaos: OrgaoEmAlerta[] | null;
   tripulante: string;
   dia: number | null;
+  statusEva?: "APTO" | "RESTRICAO" | "INAPTO";
+  acoes?: string[]; // contramedidas do protocolo, na ordem de prioridade
   onFechar: () => void;
+  onVerDecisao?: () => void; // fecha e leva à Decisão do dia (dados que sustentam o alerta)
 }) {
   useEffect(() => {
     if (!orgaos) return;
@@ -34,7 +43,7 @@ export function AlertaCriticoPopup({ orgaos, tripulante, dia, onFechar }: {
           </div>
           <div>
             <p id="alerta-critico-titulo" className="font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-[#EF4444]">
-              Alerta crítico de saúde
+              {vermelhos ? "Alerta crítico de saúde" : "Alerta de saúde"}
             </p>
             <p className="text-xs text-slate-400">
               {tripulante} • dia {dia ?? "—"} •{" "}
@@ -63,10 +72,35 @@ export function AlertaCriticoPopup({ orgaos, tripulante, dia, onFechar }: {
           })}
         </ul>
 
-        <p className="mt-3 text-[11px] text-slate-400">
-          Siga o protocolo de contramedidas e comunique a equipe médica. Dados simulados — não substitui avaliação profissional.
-        </p>
-        <div className="mt-4 flex justify-end">
+        {/* O que fazer agora: o mesmo status de EVA do topo e as primeiras contramedidas do protocolo */}
+        <div className="mt-4 rounded border border-[#EF4444]/50 bg-[rgba(239,68,68,0.08)] p-3">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-red-300">O que fazer agora</p>
+          {statusEva && <p className="mt-1 text-sm font-semibold text-white">{TEXTO_EVA[statusEva]}</p>}
+          {acoes.length > 0 ? (
+            <ol className="mt-1.5 space-y-1 text-xs text-slate-200">
+              {acoes.slice(0, 2).map((a, i) => (
+                <li key={i} className="flex gap-1.5">
+                  <span className="font-mono text-cyan-400">{String(i + 1).padStart(2, "0")}</span>
+                  <span>{a}</span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="mt-1 text-xs text-slate-300">Siga o protocolo de contramedidas do dia.</p>
+          )}
+          <p className="mt-1.5 text-[11px] text-slate-400">Comunique a equipe médica (cirurgiões de voo).</p>
+        </div>
+
+        <p className="mt-3 text-[11px] text-slate-500">Dados simulados — não substitui avaliação profissional.</p>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          {onVerDecisao && (
+            <button
+              onClick={onVerDecisao}
+              className="rounded border border-cyan-700 px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-cyan-300 hover:bg-cyan-500/10"
+            >
+              Ver por quê
+            </button>
+          )}
           <button
             onClick={onFechar}
             autoFocus

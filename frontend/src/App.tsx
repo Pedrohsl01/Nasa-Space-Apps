@@ -28,6 +28,7 @@ import { LocalMissaoWidget } from "./components/LocalMissaoWidget";
 import { LogoApp } from "./components/LogoApp";
 import { AlertaCriticoPopup } from "./components/AlertaCriticoPopup";
 import { RelatoEnviadoPopup } from "./components/RelatoEnviadoPopup";
+import { DecisaoDia, type EvidenciaAlerta } from "./components/DecisaoDia";
 import {
   ESTADO_VAZIO,
   XP_CONTRAMEDIDA,
@@ -40,6 +41,7 @@ import {
   type EstadoTripulante,
 } from "./components/prontidao";
 import {
+  API_URL,
   analisarDia,
   avancarHoraAoVivo,
   estadoAoVivo,
@@ -57,6 +59,15 @@ import type {
   TripulanteRegistrado,
 } from "./types";
 
+
+const NOME_PARTE: Record<string, string> = {
+  cabeca: "Cabeça",
+  peito: "Peito",
+  pulmao: "Pulmões",
+  coluna: "Coluna",
+  pernas: "Pernas",
+  pele: "Pele",
+};
 
 const TEMA_AMBIENTE: Record<string, "mars" | "transit" | "station"> = {
   "Base Marciana": "mars",
@@ -202,7 +213,7 @@ export function App() {
       return lista;
     } catch {
       setBackendOnline(false);
-      setErro("Backend fora do ar em localhost:8000. Inicie o uvicorn na porta 8000.");
+      setErro(`Motor de triagem fora do ar (${API_URL}). Inicie o backend (uvicorn).`);
       return [];
     }
   }, []);
@@ -502,6 +513,111 @@ export function App() {
     });
   };
 
+  // Tags do protocolo com o MESMO status de EVA do topo (prontidão): nunca "Apto para EVA" no protocolo
+  // enquanto o topo suspende, nem "Suspender EVA" enquanto o topo libera.
+  const tagsProtocolo = (() => {
+    const tags = ia?.tags_acao ?? [];
+    const status = prontidao?.status_eva;
+    if (!status || ambienteDia !== "Base Marciana") return tags;
+    const semEva = tags.filter((t) => !/apto para eva|suspender eva|restringir eva/i.test(t));
+    const eva = status === "INAPTO" ? "Suspender EVA" : status === "RESTRICAO" ? "Restringir EVA" : "Apto para EVA";
+    return [eva, ...semEva].slice(0, 3);
+  })();
+
+  // ---------------- Primeira dobra: decisão em dia de alerta, metas em dia de rotina ----------------
+  const diaDeAlerta = codigo >= 2 || prontidao?.status_eva === "INAPTO";
+  const irParaProtocolo = () => document.getElementById("painel-protocolo")?.scrollIntoView({ block: "start" });
+  // Dados que sustentam o alerta: motivo principal de cada parte do mapa corporal, mais grave primeiro
+  const evidencias: EvidenciaAlerta[] = (() => {
+    const vistos = new Set<string>();
+    const lista: EvidenciaAlerta[] = [];
+    for (const [zona, motivos] of Object.entries(motivosMapa)) {
+      for (const m of motivos ?? []) {
+        if (m.secundario || vistos.has(m.titulo)) continue;
+        vistos.add(m.titulo);
+        lista.push({ ...m, parte: NOME_PARTE[zona] ?? zona });
+      }
+    }
+    return lista.sort((x, y) => y.nivel - x.nivel).slice(0, 4);
+  })();
+
+  const seletorDia = (
+    <div className="ml-auto w-64 shrink-0 rounded border border-cyan-800/60 bg-[#020611] px-3 py-2">
+      <div className="flex items-center justify-end gap-2">
+        <span className="mr-auto font-mono text-[10px] uppercase tracking-[0.2em] text-slate-400">Dia da missão</span>
+        <button
+          onClick={() => mudarDia(-1)}
+          disabled={!diaMissao || diaMissao <= 1}
+          className="rounded bg-slate-800/80 p-0.5 text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-200 disabled:opacity-30"
+          aria-label="Dia anterior"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+        <span className="w-10 text-center font-mono text-xl font-bold leading-none text-white">{diaMissao ?? "—"}</span>
+        <button
+          onClick={() => mudarDia(1)}
+          disabled={!diaMissao || diaMissao >= ultimoDia}
+          className="rounded bg-slate-800/80 p-0.5 text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-200 disabled:opacity-30"
+          aria-label="Próximo dia"
+        >
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <input
+        type="range"
+        min={1}
+        max={ultimoDia}
+        value={diaMissao ?? 1}
+        onChange={(e) => {
+          liberarAlertaAte.current = 0; // navegação não dispara pop-up
+          setDiaMissao(Number(e.target.value));
+        }}
+        className="trilha-dia mt-2 w-full"
+        aria-label="Dia da missão"
+        style={{ ["--progresso" as string]: `${(((diaMissao ?? 1) - 1) / Math.max(1, ultimoDia - 1)) * 100}%` }}
+      />
+      <div className="mt-0.5 flex justify-between font-mono text-[9px] text-slate-500">
+        <span>Dia 1</span>
+        <span>Último registro: dia {ultimoDia}</span>
+      </div>
+    </div>
+  );
+
+  const painelMissoes = (titulo: string, className: string) => (
+    <Painel titulo={titulo} icone={<Trophy className="h-4 w-4" />} className={className}>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="min-w-40 max-w-md flex-1">
+          <div className="mb-1 flex justify-between font-mono text-[11px] text-slate-400">
+            <span>XP do dia</span>
+            <span className="text-cyan-300">{xp} / 100</span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-slate-800">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-400 transition-all duration-700"
+              style={{ width: `${xp}%` }}
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {missoes.map((m) => (
+            <span
+              key={m.nome}
+              title={`${m.dica} (meta do projeto, não clínica)`}
+              className={`flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] ${
+                m.ok ? "border-emerald-600/60 bg-emerald-500/10 text-emerald-300" : "border-slate-700 text-slate-500"
+              }`}
+            >
+              {m.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <span className="h-3.5 w-3.5 rounded-full border border-slate-600" />}
+              {m.nome}
+            </span>
+          ))}
+        </div>
+      </div>
+      {/* Coach de exercício (segue a hora do player do wearable) */}
+      {horaria?.coach_exercicio && <CoachCompacto className="mt-3" coach={horaria.coach_exercicio} />}
+    </Painel>
+  );
+
   const valorOu = (v: number | null | undefined, unidade: string) => (v === null || v === undefined ? "—" : `${v}${unidade}`);
   const sinais: SinalResumo[] = tel
     ? [
@@ -563,8 +679,12 @@ export function App() {
         <div className="mx-auto grid max-w-[1500px] grid-cols-1 items-center justify-items-center gap-x-4 gap-y-2 sm:grid-cols-[1fr_auto] sm:justify-items-stretch lg:grid-cols-[1fr_auto_1fr]">
           <h1 className="flex items-center gap-2 whitespace-nowrap text-lg font-bold tracking-tight text-white">
             <LogoApp className="h-7 w-7 shrink-0" />
-            <span>
-              AstroHealth <span className="text-cyan-400">Monitor</span>
+            <span className="flex flex-col leading-tight">
+              <span>
+                AstroHealth <span className="text-cyan-400">Monitor</span>
+              </span>
+              {/* Aviso discreto: o logotipo foi gerado por IA */}
+              <span className="font-mono text-[8px] font-normal tracking-wider text-slate-500">MARCA GERADA POR IA</span>
             </span>
           </h1>
 
@@ -620,7 +740,14 @@ export function App() {
         {/* Barra de prontidão gamificada + sinais vitais resumidos */}
         {dados && tel && (
           <div className="mx-auto mt-2 max-w-[1500px] border-t border-(--borda) pt-2">
-            <ProntidaoHUD prontidao={prontidao} xp={estadoHud.xp} ganho={ganho} sinais={sinais} sincronia={sincronia} />
+            <ProntidaoHUD
+              prontidao={prontidao}
+              xp={estadoHud.xp}
+              ganho={ganho}
+              sinais={sinais}
+              sincronia={sincronia}
+              onVerProtocolo={irParaProtocolo}
+            />
           </div>
         )}
       </header>
@@ -628,80 +755,50 @@ export function App() {
       <div className="relative mx-auto max-w-[1500px] px-4 py-4 lg:px-6">
         {erro && <div className="mb-4 rounded border border-red-800 bg-red-950/60 p-3 text-sm text-red-200">{erro}</div>}
 
-        {/* ============ MISSÕES DO DIA (com contador de dias à direita) ============ */}
-        <Painel titulo="Missões do dia" icone={<Trophy className="h-4 w-4" />} className="mb-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="min-w-40 max-w-md flex-1">
-              <div className="mb-1 flex justify-between font-mono text-[11px] text-slate-400">
-                <span>XP do dia</span>
-                <span className="text-cyan-300">{xp} / 100</span>
-              </div>
-              <div className="h-2.5 overflow-hidden rounded-full bg-slate-800">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-400 transition-all duration-700"
-                  style={{ width: `${xp}%` }}
-                />
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {missoes.map((m) => (
-                <span
-                  key={m.nome}
-                  title={`${m.dica} (meta do projeto, não clínica)`}
-                  className={`flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] ${
-                    m.ok ? "border-emerald-600/60 bg-emerald-500/10 text-emerald-300" : "border-slate-700 text-slate-500"
-                  }`}
-                >
-                  {m.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <span className="h-3.5 w-3.5 rounded-full border border-slate-600" />}
-                  {m.nome}
-                </span>
-              ))}
-            </div>
-
-            {/* Seletor compacto de dia: setas + número + trilha */}
-            <div className="ml-auto w-64 rounded border border-cyan-800/60 bg-[#020611] px-3 py-2">
-              <div className="flex items-center justify-end gap-2">
-                <span className="mr-auto font-mono text-[10px] uppercase tracking-[0.2em] text-slate-400">Dia da missão</span>
-                <button
-                  onClick={() => mudarDia(-1)}
-                  disabled={!diaMissao || diaMissao <= 1}
-                  className="rounded bg-slate-800/80 p-0.5 text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-200 disabled:opacity-30"
-                  aria-label="Dia anterior"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                </button>
-                <span className="w-10 text-center font-mono text-xl font-bold leading-none text-white">{diaMissao ?? "—"}</span>
-                <button
-                  onClick={() => mudarDia(1)}
-                  disabled={!diaMissao || diaMissao >= ultimoDia}
-                  className="rounded bg-slate-800/80 p-0.5 text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-200 disabled:opacity-30"
-                  aria-label="Próximo dia"
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <input
-                type="range"
-                min={1}
-                max={ultimoDia}
-                value={diaMissao ?? 1}
-                onChange={(e) => {
-                  liberarAlertaAte.current = 0; // navegação não dispara pop-up
-                  setDiaMissao(Number(e.target.value));
-                }}
-                className="trilha-dia mt-2 w-full"
-                aria-label="Dia da missão"
-                style={{ ["--progresso" as string]: `${(((diaMissao ?? 1) - 1) / Math.max(1, ultimoDia - 1)) * 100}%` }}
-              />
-              <div className="mt-0.5 flex justify-between font-mono text-[9px] text-slate-500">
-                <span>Dia 1</span>
-                <span>Último registro: dia {ultimoDia}</span>
-              </div>
-            </div>
-          </div>
-          {/* Coach de exercício (segue a hora do player do wearable) */}
-          {horaria?.coach_exercicio && <CoachCompacto className="mt-3" coach={horaria.coach_exercicio} />}
-        </Painel>
+        {/* ============ PRIMEIRA DOBRA ============
+            Dia de alerta: decisão (o que aconteceu, ação indicada, dados que sustentam) antes de tudo;
+            as metas e o XP descem para depois dos painéis. Dia de rotina: Missões do dia no topo. */}
+        {diaDeAlerta && ia ? (
+          <DecisaoDia
+            codigo={codigo}
+            status={ia.status}
+            score={ia.score_risco}
+            resumo={ia.resumo_alerta}
+            categorias={triagem?.categoria_risco ?? ""}
+            statusEva={ambienteDia === "Base Marciana" ? prontidao?.status_eva : undefined}
+            motivosEva={(prontidao?.bloqueios ?? []).map((x) => x.motivo)}
+            acoes={ia.acao_imediata_astronauta ?? []}
+            tags={tagsProtocolo}
+            escalonamento={codigo >= 3 ? "Escalonar para os cirurgiões de voo na Terra" : "Gerenciar a bordo com a tripulação"}
+            evidencias={evidencias}
+            onVerProtocolo={irParaProtocolo}
+          >
+            {seletorDia}
+          </DecisaoDia>
+        ) : !dados || !triagem ? (
+          // Sem dados (motor fora do ar ou carregando): nunca afirmar "sem alerta"
+          <section className="mb-4 flex flex-wrap items-center gap-4 rounded-md border border-slate-600 bg-(--card) p-3 backdrop-blur-md">
+            <p className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-300">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+              {backendOnline === false
+                ? "Sem dados do dia: o motor de triagem está fora do ar. Situação de saúde desconhecida, não presuma que está tudo bem."
+                : "Carregando a triagem do dia…"}
+            </p>
+            {seletorDia}
+          </section>
+        ) : (
+          // Dia de rotina: faixa curta com o status e o seletor de dia (as Missões ficam abaixo do mapa corporal)
+          <section className="mb-4 flex flex-wrap items-center gap-4 rounded-md border border-(--borda) bg-(--card) p-3 backdrop-blur-md">
+            <p className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-200">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-[#34D399]" />
+              <span>
+                <span className="font-semibold text-[#34D399]">Dia de rotina</span> · sem alerta ativo na triagem do dia. Metas e XP nas{" "}
+                <span className="text-cyan-300">Missões do dia</span>, abaixo do mapa corporal.
+              </span>
+            </p>
+            {seletorDia}
+          </section>
+        )}
 
         {dados && tel && payload && triagem && (
           <GradeLayout mapaLargo={Object.values(motivosMapa).some((l) => (l?.length ?? 0) > 0) || listaRelatos.length > 0}>
@@ -765,7 +862,12 @@ export function App() {
             </div>
 
             {/* ============ PROTOCOLO E CONTRAMEDIDAS ============ */}
-            <div key="protocolo">
+            {/* ============ MISSÕES DO DIA (abaixo do mapa corporal) ============ */}
+            <div key="missoes">
+              {painelMissoes(diaDeAlerta && ia ? "Missões do dia · metas de rotina" : "Missões do dia", "h-full")}
+            </div>
+
+            <div key="protocolo" id="painel-protocolo" className="scroll-mt-40">
             <Painel
               titulo="Protocolo e contramedidas"
               icone={<Sparkles className="h-4 w-4" />}
@@ -809,14 +911,14 @@ export function App() {
                     <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Por que isso acontece no espaço?</p>
                     <p className="mt-1 text-xs leading-relaxed text-slate-300">{ia.explicacao_fisiologica}</p>
                   </div>
-                  {(ia.tags_acao?.length ?? 0) > 0 && (
+                  {tagsProtocolo.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5">
                       {ia.score_risco !== undefined && ia.score_risco !== null && (
                         <span className={`rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold ${corNivel.borda} ${corNivel.texto}`}>
                           {ia.status} • {ia.score_risco}/100
                         </span>
                       )}
-                      {ia.tags_acao.map((tag) => (
+                      {tagsProtocolo.map((tag) => (
                         <span key={tag} className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${corNivel.borda} ${corNivel.fundo} ${corNivel.texto}`}>
                           {tag}
                         </span>
@@ -883,7 +985,15 @@ export function App() {
             {/* ============ TENDÊNCIA PREDITIVA + EXAMES SUGERIDOS ============ */}
             {/* Protegido: um backend antigo (sem esses blocos) não derruba a tela */}
             <div key="predicao">
-              {dados.predicao_tendencia && <PredicaoPanel className="h-full" predicao={dados.predicao_tendencia} />}
+              {dados.predicao_tendencia && <PredicaoPanel
+                  className="h-full"
+                  predicao={dados.predicao_tendencia}
+                  alertaAtual={{
+                    codigo,
+                    categorias: (triagem.categoria_risco ?? "").split(";").map((c) => c.trim()).filter((c) => c && c !== "Nominal"),
+                    radiacaoTotalMsv: tel.radiacao_acumulada_msv?.valor,
+                  }}
+                />}
             </div>
             <div key="exames">
             <ExamesPanel
@@ -980,6 +1090,7 @@ export function App() {
             </div>
           </GradeLayout>
         )}
+
       </div>
 
       {/* Aviso de registro: flutuante, some sozinho */}
@@ -1013,7 +1124,13 @@ export function App() {
         orgaos={mostrarAlertaCritico && !relatoEnviado ? orgaosAlerta : null}
         tripulante={astronauta ? astronauta.nome : idAstronauta}
         dia={diaMissao}
+        statusEva={prontidao?.status_eva}
+        acoes={ia?.acao_imediata_astronauta ?? []}
         onFechar={fecharAlertaCritico}
+        onVerDecisao={() => {
+          fecharAlertaCritico();
+          window.scrollTo({ top: 0 }); // a Decisão do dia fica no topo
+        }}
       />
     </div>
   );

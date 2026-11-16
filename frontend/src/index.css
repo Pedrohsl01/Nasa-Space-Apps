@@ -78,7 +78,7 @@
    à direita, protocolo em cima e temperatura + dispositivo embaixo. */
 .grade-painel {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: "w" "m" "p" "t" "d" "pr" "ex" "te" "tl";
+  grid-template-areas: "w" "m" "mi" "p" "t" "d" "pr" "ex" "te" "tl";
 }
 @media (min-width: 1024px) {
   .grade-painel {
@@ -86,7 +86,7 @@
     grid-template-areas:
       "w w w w w w w w w w w w w w w w w w w w"
       "m m m m m m m m m m p p p p p p p p p p"
-      "m m m m m m m m m m t t t t t d d d d d"
+      "mi mi mi mi mi mi mi mi mi mi t t t t t d d d d d"
       "pr pr pr pr pr pr pr pr pr pr ex ex ex ex ex ex ex ex ex ex"
       "te te te te te te te te te te tl tl tl tl tl tl tl tl tl tl";
   }
@@ -98,12 +98,13 @@
     grid-template-areas:
       "w w w w w w w w w w w w w w w w w w w w"
       "m m m m m m m m m m m m p p p p p p p p"
-      "m m m m m m m m m m m m t t t t d d d d"
+      "mi mi mi mi mi mi mi mi mi mi mi mi t t t t d d d d"
       "pr pr pr pr pr pr pr pr pr pr ex ex ex ex ex ex ex ex ex ex"
       "te te te te te te te te te te tl tl tl tl tl tl tl tl tl tl";
   }
   /* 12 colunas = metade + 2 colunas + 2 vãos; 20% exatos = metade + 2 colunas + 1,8 vão */
-  .grade-painel.mapa-largo > [data-area="m"] {
+  .grade-painel.mapa-largo > [data-area="m"],
+  .grade-painel.mapa-largo > [data-area="mi"] {
     margin-right: calc(var(--spacing) * 4 * 0.2);
   }
 }

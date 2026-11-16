@@ -6,17 +6,33 @@ import type { CoachExercicio, ExameSugerido, PredicaoTendencia } from "../types"
 /* (a) Alerta de tendência preditiva e contramedidas                   */
 /* ------------------------------------------------------------------ */
 
-export function PredicaoPanel({ predicao, className = "" }: { predicao: PredicaoTendencia; className?: string }) {
+/** Alerta ATUAL do dia (triagem), para a tendência nunca soar como "sem risco" enquanto ele está ativo. */
+export interface AlertaAtual {
+  codigo: number; // 2 = atenção, 3 = crítico
+  categorias: string[]; // ex.: ["Radiação"]
+  radiacaoTotalMsv?: number;
+}
+
+export function PredicaoPanel({ predicao, alertaAtual, className = "" }: {
+  predicao: PredicaoTendencia;
+  alertaAtual?: AlertaAtual;
+  className?: string;
+}) {
+  const alertaAtivo = !!alertaAtual && alertaAtual.codigo >= 2;
+  const semPiora = predicao.riscos.length === 0;
+  const radiacaoAtiva = alertaAtivo && alertaAtual.categorias.includes("Radiação");
   const corNivel =
     predicao.nivel === "atencao"
       ? "border-amber-500/60 text-amber-300"
       : predicao.nivel === "observacao"
         ? "border-sky-500/60 text-sky-300"
-        : "border-emerald-600/60 text-emerald-300";
+        : alertaAtivo
+          ? "border-slate-500/60 text-slate-300" // sem piora, mas não "estável/verde" com alerta ativo
+          : "border-emerald-600/60 text-emerald-300";
   const nomeNivel: Record<string, string> = {
     atencao: "ATENÇÃO",
     observacao: "OBSERVAR",
-    estavel: "ESTÁVEL",
+    estavel: alertaAtivo ? "SEM PIORA GRADUAL" : "ESTÁVEL",
     dados_insuficientes: "POUCOS DADOS",
   };
 
@@ -32,11 +48,44 @@ export function PredicaoPanel({ predicao, className = "" }: { predicao: Predicao
         </span>
       }
     >
-      <p className="mb-3 text-xs text-slate-400">{predicao.resumo} Riscos que ainda não viraram alerta vermelho.</p>
-      {predicao.riscos.length === 0 ? (
-        <p className="rounded border border-emerald-900/60 bg-emerald-500/5 p-3 text-xs text-emerald-300">
-          Sem tendência de piora: sono, FC, pressão, radiação, treino e humor estáveis na janela.
-        </p>
+      <p className="mb-3 text-xs text-slate-400">
+        {semPiora && predicao.nivel !== "dados_insuficientes" ? "Sem piora gradual detectada na janela." : predicao.resumo} Este painel olha a <strong className="text-slate-300">tendência</strong> dos últimos dias, não o alerta de hoje.
+      </p>
+
+      {/* Alerta atual × tendência recente: um alerta ativo pode existir sem piora na série */}
+      {alertaAtivo && (
+        <div
+          className={`mb-3 rounded border p-3 text-xs ${
+            alertaAtual.codigo >= 3 ? "border-red-500/60 bg-red-500/10 text-red-200" : "border-amber-500/60 bg-amber-500/10 text-amber-200"
+          }`}
+        >
+          <p className="font-semibold">
+            ⚠ Alerta ativo hoje{alertaAtual.categorias.length ? ` (${alertaAtual.categorias.join(", ")})` : ""}: o risco continua presente.
+          </p>
+          <p className="mt-1 text-[11px] opacity-90">
+            {semPiora ? "A ausência de piora gradual não reduz o alerta atual" : "As tendências abaixo somam-se ao alerta atual"}: siga o protocolo e
+            as contramedidas do dia.
+          </p>
+          {radiacaoAtiva && (
+            <p className="mt-1 text-[11px] opacity-90">
+              Radiação é dose <strong>cumulativa</strong>
+              {alertaAtual.radiacaoTotalMsv !== undefined && ` (${alertaAtual.radiacaoTotalMsv.toLocaleString("pt-BR")} mSv até hoje)`}: o
+              dano biológico e o risco de câncer a longo prazo não regridem quando a taxa para de subir.
+            </p>
+          )}
+        </div>
+      )}
+
+      {semPiora ? (
+        alertaAtivo ? (
+          <p className="rounded border border-slate-700 bg-(--subcard) p-3 text-xs text-slate-300">
+            Sem piora gradual na janela (sono, FC, pressão, ritmo de radiação, treino e humor). Isso não significa ausência de risco.
+          </p>
+        ) : (
+          <p className="rounded border border-emerald-900/60 bg-emerald-500/5 p-3 text-xs text-emerald-300">
+            Sem tendência de piora: sono, FC, pressão, ritmo de radiação, treino e humor estáveis na janela.
+          </p>
+        )
       ) : (
         <ul className="space-y-2">
           {predicao.riscos.map((r) => (
