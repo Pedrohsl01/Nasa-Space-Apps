@@ -1,17 +1,17 @@
-# 🚀 Astro Health — Autonomous Space Health Monitoring
+# 🚀 Astro Health BR — Autonomous Space Health Monitoring
 
 ![NASA Space Apps Challenge 2026](https://img.shields.io/badge/NASA%20Space%20Apps-2026-0B3D91?style=for-the-badge&logo=nasa)
 ![Python](https://img.shields.io/badge/Backend-Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Frontend](https://img.shields.io/badge/Frontend-Vite%20%2B%20React-646CFF?style=for-the-badge&logo=vite&logoColor=white)
 ![pnpm](https://img.shields.io/badge/Package%20Manager-pnpm-F69220?style=for-the-badge&logo=pnpm&logoColor=white)
 
-Autonomous biomedical monitoring and clinical decision support system developed for the **NASA Space Apps Challenge 2026**. **Astro Health** is designed to operate with **onboard autonomy** and **low cognitive load**, assisting crews on long-duration missions and planetary habitats (such as Martian bases), where communication delays make real-time ground medical support unfeasible.
+Autonomous biomedical monitoring and clinical decision support system developed for the **NASA Space Apps Challenge 2026**. **Astro Health BR** is designed to operate with **onboard autonomy** and **low cognitive load**, assisting crews on long-duration missions and planetary habitats (such as Martian bases), where communication delays make real-time ground medical support unfeasible.
 
 ---
 
 ## 🧭 Overview
 
-On missions beyond Low Earth Orbit, astronauts face severe and cumulative physiological and psychological stressors. **Astro Health** integrates hourly biomedical telemetry, longitudinal biomarker analysis, a deterministic risk triage engine, and AI-assisted analysis to detect early deviations and guide clinical protocols directly onboard.
+On missions beyond Low Earth Orbit, astronauts face severe and cumulative physiological and psychological stressors. **Astro Health BR** integrates hourly biomedical telemetry, longitudinal biomarker analysis, a deterministic risk triage engine, and AI-assisted analysis to detect early deviations and guide clinical protocols directly onboard.
 
 ### Scientific Foundation
 The monitoring parameters and clinical triage rules are based on the risks mapped by the **NASA Human Research Program (HRP)** and research from the **Canadian Space Agency (CSA)**, addressing:
@@ -133,4 +133,3 @@ In compliance with the **NASA Space Apps Challenge** guidelines:
 - **Rafael Baruc Silva**
 
 ---
-
