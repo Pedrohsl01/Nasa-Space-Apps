@@ -85,13 +85,46 @@ export function WearablePlayer({
     return () => clearInterval(t);
   }, []);
 
-  const pontos = dados?.pontos ?? [];
-  const horaAtual = dados?.hora ?? null;
+  // Day already recorded (before the last one): complete readings, no live collection.
+  // Play on it REPLAYS the 24 recorded readings hour by hour (view only; no data is changed).
+  const historico = !!dados?.historico;
+  const [replay, setReplay] = useState<number | null>(null); // replay cursor (hour), null = whole day
+  const [tocandoReplay, setTocandoReplay] = useState(false);
+  useEffect(() => {
+    setReplay(null);
+    setTocandoReplay(false);
+  }, [dados?.dia_missao, dados?.id_astronauta]);
+  useEffect(() => {
+    if (!tocandoReplay) return;
+    if ((replay ?? -1) >= 23) {
+      setTocandoReplay(false); // end of the recorded day
+      return;
+    }
+    const t = setTimeout(() => setReplay((h) => (h ?? -1) + 1), 5000 / velocidade);
+    return () => clearTimeout(t);
+  }, [tocandoReplay, replay, velocidade]);
+  const emReplay = historico && replay !== null;
+  const tocandoAgora = historico ? tocandoReplay : tocando;
+  const alternarPlay = () => {
+    if (!historico) return onTocar(!tocando);
+    if (tocandoReplay) return setTocandoReplay(false);
+    if (replay === null || replay >= 23) setReplay(0); // (re)start the replay at 00:00
+    setTocandoReplay(true);
+  };
+  const avancar = () => {
+    if (!historico) return onAvancar();
+    setTocandoReplay(false);
+    setReplay((h) => Math.min(23, (h ?? -1) + 1));
+  };
+
+  const pontos = (dados?.pontos ?? []).filter((p) => !emReplay || p.hora <= replay);
+  const horaAtual = emReplay ? replay : dados?.hora ?? null;
   // Clicking an already collected hour shows that reading; "back to live" returns to the last one
   const [horaVista, setHoraVista] = useState<number | null>(null);
   useEffect(() => setHoraVista(null), [dados?.dia_missao, dados?.id_astronauta]);
   const vendoPassado = horaVista !== null && horaVista !== horaAtual;
-  const ponto = (vendoPassado ? pontos.find((p) => p.hora === horaVista) : dados?.ponto_atual) ?? null;
+  const ponto =
+    (vendoPassado || emReplay ? pontos.find((p) => p.hora === (vendoPassado ? horaVista : horaAtual)) : dados?.ponto_atual) ?? null;
 
   const alertasPorSinal = new Map<string, number>();
   ponto?.alertas.forEach((a) => alertasPorSinal.set(a.sinal, Math.max(a.nivel, alertasPorSinal.get(a.sinal) ?? 0)));
@@ -108,8 +141,6 @@ export function WearablePlayer({
   const textoBotao =
     "flex items-center gap-1 whitespace-nowrap rounded border px-2 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider disabled:opacity-40";
   const fimDoDia = horaAtual !== null && horaAtual >= 23;
-  // Day already recorded (before the last one): complete readings, no collection
-  const historico = !!dados?.historico;
   const semColeta = !dados || historico;
   // Last dataset day: complete; the next advance starts the first new day at 00:00
   const ultimoDaPlanilha = !!dados && !historico && dados.coleta_ao_vivo === false;
@@ -123,12 +154,14 @@ export function WearablePlayer({
         <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-500">
           <span
             className={`h-1.5 w-1.5 rounded-full ${
-              erroSync ? "bg-red-500" : coletando ? "animate-ping bg-cyan-400" : tocando ? "animate-pulse bg-green-500" : "bg-slate-500"
+              erroSync ? "bg-red-500" : coletando ? "animate-ping bg-cyan-400" : tocandoAgora ? "animate-pulse bg-green-500" : "bg-slate-500"
             }`}
           />
           {erroSync
             ? "out of sync"
-            : historico || ultimoDaPlanilha
+            : emReplay
+              ? `replay • ${(replay ?? 0) + 1}/24 readings • ${tocandoReplay ? "playing" : "paused"}`
+              : historico || ultimoDaPlanilha
               ? "recorded day • 24/24 readings"
               : dados
               ? `${dados.horas_coletadas ?? pontos.length}/24 readings • ${tocando ? "collecting" : "paused"}`
@@ -140,13 +173,23 @@ export function WearablePlayer({
         {/* Smartwatch controls */}
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => onTocar(!tocando)}
-            disabled={semColeta}
+            onClick={alternarPlay}
+            disabled={!dados}
             className="rounded border border-cyan-500/70 bg-cyan-500/15 p-1.5 text-cyan-200 hover:bg-cyan-500/25 disabled:opacity-40"
-            aria-label={tocando ? "Pause collection" : "Start automatic collection"}
-            title={tocando ? "Pause automatic collection" : `Automatic collection: 1 hour every ${5 / velocidade} s`}
+            aria-label={
+              historico ? (tocandoReplay ? "Pause replay" : "Replay the recorded day") : tocando ? "Pause collection" : "Start automatic collection"
+            }
+            title={
+              historico
+                ? tocandoReplay
+                  ? "Pause the replay"
+                  : `Replay the 24 recorded readings: 1 hour every ${5 / velocidade} s`
+                : tocando
+                  ? "Pause automatic collection"
+                  : `Automatic collection: 1 hour every ${5 / velocidade} s`
+            }
           >
-            {tocando ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {tocandoAgora ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </button>
           <div className="flex overflow-hidden rounded border border-cyan-900" role="group" aria-label="Collection speed">
             {VELOCIDADES.map((v) => (
@@ -162,12 +205,14 @@ export function WearablePlayer({
             ))}
           </div>
           <button
-            onClick={onAvancar}
-            disabled={semColeta || coletando}
+            onClick={avancar}
+            disabled={!dados || coletando || (historico && emReplay && fimDoDia)}
             className={botao}
             aria-label="Force the next hour reading"
             title={
-              ultimoDaPlanilha
+              historico
+                ? "+1h: show the next recorded reading"
+                : ultimoDaPlanilha
                 ? "Starts the next day at 00:00 (records the day for the crew)"
                 : fimDoDia
                   ? "The next reading rolls over to the next day (00:00)"
@@ -199,8 +244,12 @@ export function WearablePlayer({
 
       {/* Simulation actions */}
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        <button onClick={onAvancar} disabled={semColeta || coletando} className={`${textoBotao} border-cyan-700 text-cyan-200 hover:bg-cyan-500/15`}>
-          <FastForward className="h-3 w-3" /> +1h force reading
+        <button
+          onClick={avancar}
+          disabled={!dados || coletando || (historico && emReplay && fimDoDia)}
+          className={`${textoBotao} border-cyan-700 text-cyan-200 hover:bg-cyan-500/15`}
+        >
+          <FastForward className="h-3 w-3" /> {historico ? "+1h next reading" : "+1h force reading"}
         </button>
         <button
           onClick={onPico}
@@ -212,7 +261,7 @@ export function WearablePlayer({
         </button>
         {historico && (
           <span className="font-mono text-[10px] text-slate-400">
-            Day already recorded: 24 readings. Live collection happens on the last mission day.
+            Day already recorded: Play replays its 24 readings hour by hour. Live collection happens on the last mission day.
           </span>
         )}
         {ultimoDaPlanilha && (
@@ -253,7 +302,7 @@ export function WearablePlayer({
       </div>
       {vendoPassado && (
         <button onClick={() => setHoraVista(null)} className="mt-1 font-mono text-[10px] text-cyan-300 hover:underline">
-          ← Viewing {hh(horaVista)} • back to live ({horaAtual !== null ? hh(horaAtual) : "—"})
+          ← Viewing {hh(horaVista)} • back to {emReplay ? "replay" : "live"} ({horaAtual !== null ? hh(horaAtual) : "—"})
         </button>
       )}
 
