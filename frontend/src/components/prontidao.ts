@@ -1,9 +1,9 @@
-// Estado gamificado do HUD por tripulante: contramedidas aplicadas e pontos de mitigação (XP).
-// A Prontidão / Aptidão EVA em si é cumulativa e vem do backend (POST /api/prontidao):
-//   R(t) = clamp(R_base − D_acum(t) − P_agudo(t), 0, 100), com D integrado hora a hora desde 00:00.
+// Gamified HUD state per crew member: applied countermeasures and mitigation points (XP).
+// Readiness / EVA Fitness itself is cumulative and comes from the backend (POST /api/prontidao):
+//   R(t) = clamp(R_base − D_acum(t) − P_agudo(t), 0, 100), with D integrated hour by hour since 00:00.
 
 export interface EstadoTripulante {
-  aplicadas: Record<string, string[]>; // dia da missão -> chaves "hora|texto da contramedida"
+  aplicadas: Record<string, string[]>; // mission day -> keys "hour|countermeasure text"
   xp: number;
 }
 
@@ -27,14 +27,14 @@ export function salvarHud(hud: Record<string, EstadoTripulante>) {
   try {
     localStorage.setItem(CHAVE, JSON.stringify(hud));
   } catch {
-    /* navegador sem armazenamento: vale só nesta sessão */
+    /* browser without storage: valid for this session only */
   }
 }
 
-// ---------------- Contramedidas aplicadas: "hora|texto" ----------------
+// ---------------- Applied countermeasures: "hour|text" ----------------
 export const chaveContramedida = (hora: number, texto: string) => `${hora}|${texto}`;
 
-/** Converte as chaves salvas em eventos para o modelo cumulativo (chaves antigas, sem hora, são ignoradas). */
+/** Converts the saved keys into events for the cumulative model (old keys, without an hour, are ignored). */
 export function contramedidasDoDia(chaves: string[]): { hora: number; texto: string }[] {
   const lista: { hora: number; texto: string }[] = [];
   for (const c of chaves) {
@@ -44,7 +44,7 @@ export function contramedidasDoDia(chaves: string[]): { hora: number; texto: str
   return lista;
 }
 
-/** Hora em que a contramedida com esse texto foi aplicada no dia, ou null. */
+/** Hour at which the countermeasure with this text was applied on the day, or null. */
 export function horaAplicada(chaves: string[], texto: string): number | null {
   return contramedidasDoDia(chaves).find((c) => c.texto === texto)?.hora ?? null;
 }

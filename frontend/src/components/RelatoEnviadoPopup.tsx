@@ -1,10 +1,10 @@
-// Pop-up de confirmação: o desconforto relatado foi enviado para análise da equipe médica.
+// Confirmation pop-up: the reported discomfort was sent to the medical team for review.
 import { useEffect } from "react";
 import { Stethoscope } from "lucide-react";
 import type { RelatoDesconforto } from "../types";
 
 export function RelatoEnviadoPopup({ relato, onFechar }: { relato: RelatoDesconforto | null; onFechar: () => void }) {
-  // Fecha sozinho depois de 6 s ou com Esc
+  // Closes on its own after 6 s or with Esc
   useEffect(() => {
     if (!relato) return;
     const t = setTimeout(onFechar, 6000);
@@ -30,10 +30,10 @@ export function RelatoEnviadoPopup({ relato, onFechar }: { relato: RelatoDesconf
           <Stethoscope className="h-6 w-6" />
         </div>
         <p id="relato-enviado-titulo" className="font-mono text-[10px] uppercase tracking-[0.25em] text-violet-300">
-          Relato enviado
+          Report sent
         </p>
         <p className="mt-2 text-sm leading-snug text-slate-100">
-          Sua dor foi enviada para análise da <span className="font-semibold text-white">equipe médica</span>.
+          Your report was sent to the <span className="font-semibold text-white">medical team</span> for review.
         </p>
         <p className="mt-2 rounded border border-slate-800 bg-(--subcard) px-3 py-1.5 font-mono text-[11px] text-slate-300">
           {relato.nome} • {relato.tipo} <span className="tabular-nums">{relato.intensidade}/5</span>

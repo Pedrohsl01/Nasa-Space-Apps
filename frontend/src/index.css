@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
-/* ============ Temas por cenário da missão (data-theme no contêiner do app) ============
-   --card: fundo dos cards  --subcard: sub-cards internos  --borda: bordas principais
-   --canto: cantoneiras HUD  --destaque: títulos/destaques  --dados: valores de telemetria
-   Status médicos são fixos em todos os temas: nominal #34D399, atenção #FBBF24, crítico #EF4444 */
+/* ============ Themes per mission scenario (data-theme on the app container) ============
+   --card: card background  --subcard: inner sub-cards  --borda: main borders
+   --canto: HUD corner brackets  --destaque: titles/highlights  --dados: telemetry values
+   Medical statuses are fixed across all themes: nominal #34D399, warning #FBBF24, critical #EF4444 */
 :root,
 [data-theme="transit"] {
   --card: rgba(14, 18, 26, 0.88);
@@ -30,7 +30,7 @@
   --dados: #22d3ee;
 }
 
-/* Trilha fina do seletor de dia: parte percorrida em ciano, ponto brilhante no dia atual */
+/* Thin track of the day selector: traveled part in cyan, bright dot on the current day */
 .trilha-dia {
   -webkit-appearance: none;
   appearance: none;
@@ -56,7 +56,7 @@
   box-shadow: 0 0 8px rgba(34, 211, 238, 0.8);
 }
 
-/* Barra de rolagem fina e discreta (lista de telemetria) */
+/* Thin, discreet scrollbar (telemetry list) */
 .rolagem-fina {
   scrollbar-width: thin;
   scrollbar-color: rgba(34, 211, 238, 0.45) transparent;
@@ -72,10 +72,10 @@
   border-radius: 999px;
 }
 
-/* ============ Grade dos painéis ============
-   Tela estreita: uma coluna, na ordem abaixo.
-   Tela larga (≥ 1024 px): 20 colunas finas (equivalem às 4 de antes). O mapa ocupa metade à esquerda;
-   à direita, protocolo em cima e temperatura + dispositivo embaixo. */
+/* ============ Panel grid ============
+   Narrow screen: one column, in the order below.
+   Wide screen (≥ 1024 px): 20 thin columns (equivalent to the previous 4). The map takes the left half;
+   on the right, protocol on top and temperature + device below. */
 .grade-painel {
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas: "w" "m" "mi" "p" "t" "d" "pr" "ex" "te" "tl";
@@ -91,8 +91,8 @@
       "te te te te te te te te te te tl tl tl tl tl tl tl tl tl tl";
   }
 }
-/* Mapa com cartões de alerta/desconforto em tela ≥ 1500 px: o mapa cresce no máximo 20% (12 de 20 colunas,
-   descontado o resto de um vão) para os cartões caberem nas laterais das figuras. Sem cartões, não cresce. */
+/* Map with alert/discomfort cards on screens ≥ 1500 px: the map grows at most 20% (12 of 20 columns,
+   minus the remainder of one gap) so the cards fit beside the figures. Without cards, it does not grow. */
 @media (min-width: 1500px) {
   .grade-painel.mapa-largo {
     grid-template-areas:
@@ -102,14 +102,14 @@
       "pr pr pr pr pr pr pr pr pr pr ex ex ex ex ex ex ex ex ex ex"
       "te te te te te te te te te te tl tl tl tl tl tl tl tl tl tl";
   }
-  /* 12 colunas = metade + 2 colunas + 2 vãos; 20% exatos = metade + 2 colunas + 1,8 vão */
+  /* 12 columns = half + 2 columns + 2 gaps; exact 20% = half + 2 columns + 1.8 gap */
   .grade-painel.mapa-largo > [data-area="m"],
   .grade-painel.mapa-largo > [data-area="mi"] {
     margin-right: calc(var(--spacing) * 4 * 0.2);
   }
 }
 
-/* Rolagem (só onde ainda existe): barra fina, invisível até passar o mouse */
+/* Scrolling (only where it still exists): thin bar, invisible until hovered */
 .grade-painel section {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
@@ -132,7 +132,7 @@
   background: rgba(34, 211, 238, 0.45);
 }
 
-/* HUD: feedback de ganho de prontidão (sobe e some) */
+/* HUD: readiness gain feedback (rises and fades) */
 @keyframes hud-ganho {
   0% { opacity: 0; transform: translateY(6px); }
   15% { opacity: 1; transform: translateY(0); }
@@ -142,7 +142,7 @@
 .hud-ganho { animation: hud-ganho 2.6s ease-out forwards; }
 @media (prefers-reduced-motion: reduce) { .hud-ganho { animation: none; } }
 
-/* Pop-up de relato enviado: entra com leve zoom */
+/* Report-sent pop-up: enters with a slight zoom */
 @keyframes relato-popup {
   from { opacity: 0; transform: scale(0.94); }
   to { opacity: 1; transform: scale(1); }

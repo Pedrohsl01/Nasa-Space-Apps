@@ -1,4 +1,4 @@
-// Tipos das respostas do backend FastAPI (backend/main.py)
+// Types of the FastAPI backend responses (backend/main.py)
 
 export interface Astronauta {
   id_astronauta: string;
@@ -42,22 +42,22 @@ export interface PontoSerie {
 
 export type StatusRisco = "NORMAL" | "ATENCAO" | "CRITICO";
 
-/** Desconforto relatado pelo astronauta numa região do corpo (salvo no navegador e enviado à IA). */
+/** Discomfort reported by the astronaut on a body region (saved in the browser and sent to the AI). */
 export interface RelatoDesconforto {
   regiaoId: string;
   vista: "frente" | "costas";
   nome: string;
   tipo: string;
-  intensidade: number; // 1 (leve) a 5 (intensa)
+  intensidade: number; // 1 (mild) to 5 (severe)
   detalhe: string;
   criadoEm: string;
-  hora?: number; // hora do relógio virtual (0–23) em que foi relatado; passa a pesar na prontidão a partir dela
+  hora?: number; // virtual clock hour (0–23) it was reported at; it starts weighing on readiness from then on
 }
 
-// ---------------- Prontidão cumulativa (POST /api/prontidao) ----------------
+// ---------------- Cumulative readiness (POST /api/prontidao) ----------------
 export interface FatorProntidao {
   rotulo: string;
-  pontos: number; // negativo = desconta
+  pontos: number; // negative = deducts
 }
 
 export interface PontoProntidao {
@@ -182,7 +182,7 @@ export interface PontoHorario {
   alertas: AlertaHora[];
   ao_vivo?: boolean;
   lido_em?: string;
-  efeitos?: string[]; // eventos que modularam esta leitura (dor, contramedida, fadiga)
+  efeitos?: string[]; // events that modulated this reading (pain, countermeasure, fatigue)
 }
 
 export interface CoachExercicio {
@@ -214,13 +214,13 @@ export interface TelemetriaHoraria {
   exames_sugeridos: ExameSugerido[];
   prontidao?: ProntidaoCumulativa;
   nota: string;
-  // Fluxo ao vivo (/api/dia/reiniciar, /api/telemetria/avancar-hora, /api/telemetria/estado):
-  // "pontos" traz SÓ as horas já coletadas (00:00 até "hora")
+  // Live flow (/api/dia/reiniciar, /api/telemetria/avancar-hora, /api/telemetria/estado):
+  // "pontos" carries ONLY the hours already collected (00:00 to "hora")
   ultima_leitura?: string;
   horas_coletadas?: number;
   dia_completo?: boolean;
-  historico?: boolean; // dia anterior ao último: 24 leituras, sem coleta ao vivo
-  coleta_ao_vivo?: boolean; // dia novo (criado pelo app) em coleta hora a hora; false = dia completo da planilha
+  historico?: boolean; // day before the last one: 24 readings, no live collection
+  coleta_ao_vivo?: boolean; // new day (created by the app) in hour-by-hour collection; false = complete dataset day
   virada?: { de: number; para: number; registrado: boolean; tripulacao?: TripulanteRegistrado[] } | null;
 }
 
@@ -248,14 +248,14 @@ export interface Analise {
   triagem_motor: Triagem;
   orientacao_ia: OrientacaoIA;
   uso_groq: UsoGroq;
-  // Presentes só na resposta de /api/registrar-dia
+  // Present only in the /api/registrar-dia response
   dia_registrado?: number;
   origem?: "manual" | "simulado_normal" | "simulado_anomalia";
   cenario_simulado?: string | null;
-  tripulacao_registrada?: TripulanteRegistrado[]; // dia seguinte simulado para os demais tripulantes
+  tripulacao_registrada?: TripulanteRegistrado[]; // next day simulated for the other crew members
 }
 
-/** Dia simulado automaticamente para outro tripulante quando um dia novo é registrado. */
+/** Day simulated automatically for another crew member when a new day is recorded. */
 export interface TripulanteRegistrado {
   id_astronauta: string;
   nome: string;

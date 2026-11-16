@@ -5,35 +5,35 @@ interface SpinoffModalProps {
   onFechar: () => void;
 }
 
-// Exemplos de tecnologias espaciais que chegaram à Terra.
-// Fonte de referência: NASA Spinoff (https://spinoff.nasa.gov) — conferir cada item antes do pitch.
+// Examples of space technologies that made it to Earth.
+// Reference source: NASA Spinoff (https://spinoff.nasa.gov); check each item before the pitch.
 const DO_ESPACO_PARA_TERRA = [
   {
-    titulo: "Termômetro de ouvido infravermelho",
-    texto: "Sensores infravermelhos criados para medir temperatura de estrelas e planetas foram adaptados para medir febre em segundos.",
+    titulo: "Infrared ear thermometer",
+    texto: "Infrared sensors created to measure the temperature of stars and planets were adapted to measure fever in seconds.",
   },
   {
-    titulo: "Câmeras de celular (sensor CMOS)",
-    texto: "Sensores de imagem pequenos e de baixo consumo desenvolvidos para missões espaciais hoje estão em quase todo smartphone.",
+    titulo: "Phone cameras (CMOS sensor)",
+    texto: "Small, low-power image sensors developed for space missions are now in almost every smartphone.",
   },
   {
-    titulo: "Espuma viscoelástica",
-    texto: "Material pensado para amortecer impactos em assentos de aeronaves e hoje usado em colchões e equipamentos hospitalares.",
+    titulo: "Memory foam",
+    texto: "A material designed to cushion impacts in aircraft seats, now used in mattresses and hospital equipment.",
   },
 ];
 
 const DESTE_PROJETO_PARA_TERRA = [
   {
-    titulo: "Estações isoladas",
-    texto: "Bases na Antártida, plataformas de petróleo e navios passam meses longe de um médico. A mesma triagem por linha de base pessoal ajuda a perceber cedo quando algo muda.",
+    titulo: "Isolated stations",
+    texto: "Antarctic bases, oil rigs and ships spend months away from a doctor. The same triage against a personal baseline helps spot early when something changes.",
   },
   {
-    titulo: "Telemedicina com internet instável",
-    texto: "O motor de regras roda 100% local (Offline-First). A IA só é chamada quando há alerta, o que serve a comunidades rurais e ribeirinhas com conexão fraca.",
+    titulo: "Telemedicine with unstable internet",
+    texto: "The rules engine runs 100% locally (Offline-First). The AI is only called when there is an alert, which suits rural and riverside communities with weak connections.",
   },
   {
-    titulo: "Acompanhamento de doenças crônicas",
-    texto: "Comparar a pessoa com o próprio normal, e não com uma média geral, ajuda quem mede pressão e glicemia em casa a ver tendências antes de virar crise.",
+    titulo: "Chronic disease follow-up",
+    texto: "Comparing people with their own normal, not with a general average, helps those who measure blood pressure and glucose at home see trends before they become a crisis.",
   },
 ];
 
@@ -44,10 +44,10 @@ export function SpinoffModal({ aberto, onFechar }: SpinoffModalProps) {
       <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-lg border border-(--borda) bg-(--card) backdrop-blur-md">
         <div className="flex items-center justify-between border-b border-cyan-900/60 px-5 py-3">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-400">Spinoff Terra ↔ Espaço</p>
-            <h2 className="text-lg font-semibold text-slate-100">O que vem do espaço volta para a Terra</h2>
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-400">Spinoff Earth ↔ Space</p>
+            <h2 className="text-lg font-semibold text-slate-100">What comes from space returns to Earth</h2>
           </div>
-          <button onClick={onFechar} className="p-1 text-slate-400 hover:text-white" aria-label="Fechar">
+          <button onClick={onFechar} className="p-1 text-slate-400 hover:text-white" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -55,7 +55,7 @@ export function SpinoffModal({ aberto, onFechar }: SpinoffModalProps) {
         <div className="grid md:grid-cols-2 gap-5 p-5">
           <section>
             <h3 className="mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-sky-300">
-              <Rocket className="w-4 h-4" /> Do espaço para a Terra
+              <Rocket className="w-4 h-4" /> From space to Earth
             </h3>
             <ul className="space-y-3">
               {DO_ESPACO_PARA_TERRA.map((item) => (
@@ -68,7 +68,7 @@ export function SpinoffModal({ aberto, onFechar }: SpinoffModalProps) {
           </section>
           <section>
             <h3 className="mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-emerald-300">
-              <Earth className="w-4 h-4" /> Deste projeto para a Terra
+              <Earth className="w-4 h-4" /> From this project to Earth
             </h3>
             <ul className="space-y-3">
               {DESTE_PROJETO_PARA_TERRA.map((item) => (
@@ -82,7 +82,7 @@ export function SpinoffModal({ aberto, onFechar }: SpinoffModalProps) {
         </div>
 
         <p className="border-t border-slate-800 px-5 py-3 text-[11px] text-slate-500">
-          Referência dos exemplos: NASA Spinoff (spinoff.nasa.gov) — a confirmar pela equipe antes da apresentação.
+          Reference for the examples: NASA Spinoff (spinoff.nasa.gov), to be confirmed by the team before the presentation.
         </p>
       </div>
     </div>

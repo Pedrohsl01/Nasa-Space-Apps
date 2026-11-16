@@ -1,4 +1,4 @@
-// Ilustrações simples dos órgãos/partes do corpo para os cartões de alerta
+// Simple illustrations of organs/body parts for the alert cards
 import type { ZonaCorpo } from "./motivosAlerta";
 
 export function OrgaoIcone({ zona, cor, className = "h-11 w-11" }: { zona: ZonaCorpo; cor: string; className?: string }) {
@@ -14,7 +14,7 @@ export function OrgaoIcone({ zona, cor, className = "h-11 w-11" }: { zona: ZonaC
       </defs>
 
       {zona === "peito" && (
-        // Coração com aorta e artéria pulmonar
+        // Heart with aorta and pulmonary artery
         <g>
           <path d="M20 9 C20 5 24 4 25 8 L25 14" fill="none" {...traco} />
           <path d="M28 14 C28 8 33 6 35 9 C36 11 34 13 32 13" fill="none" {...traco} />
@@ -29,7 +29,7 @@ export function OrgaoIcone({ zona, cor, className = "h-11 w-11" }: { zona: ZonaC
       )}
 
       {zona === "pulmao" && (
-        // Traqueia, brônquios e dois pulmões
+        // Trachea, bronchi and two lungs
         <g>
           <path d="M24 5 L24 17 M24 17 L19 22 M24 17 L29 22" fill="none" {...traco} />
           <path d="M19 15 C13 15 8 22 7 31 C6 38 9 42 14 41 C18 40 20 37 20 32 L20 20 C20 17 20 15 19 15 Z" fill={`url(#${id})`} {...traco} />
@@ -39,7 +39,7 @@ export function OrgaoIcone({ zona, cor, className = "h-11 w-11" }: { zona: ZonaC
       )}
 
       {zona === "cabeca" && (
-        // Cérebro (vista lateral) com sulcos
+        // Brain (side view) with sulci
         <g>
           <path
             d="M10 26 C7 22 9 15 14 13 C15 8 21 6 25 8 C29 5 36 7 37 12 C42 13 44 19 41 23 C43 27 40 32 35 32 C33 36 27 37 24 34 C21 37 15 36 14 32 C10 32 8 29 10 26 Z"
@@ -52,7 +52,7 @@ export function OrgaoIcone({ zona, cor, className = "h-11 w-11" }: { zona: ZonaC
       )}
 
       {zona === "coluna" && (
-        // Vértebras empilhadas
+        // Stacked vertebrae
         <g>
           {[6, 13, 20, 27, 34].map((y, i) => (
             <g key={y}>
@@ -65,7 +65,7 @@ export function OrgaoIcone({ zona, cor, className = "h-11 w-11" }: { zona: ZonaC
       )}
 
       {zona === "pernas" && (
-        // Fêmur (osso da coxa)
+        // Femur (thigh bone)
         <g>
           <path
             d="M17 7 C13 5 10 9 13 12 C15 13 17 13 19 14 L26 36 C25 38 23 40 24 43 C26 46 30 44 30 41 C32 43 36 42 35 38 C34 35 31 35 29 35 L22 12 C23 10 23 8 21 6 C20 5 18 6 17 7 Z"
@@ -77,7 +77,7 @@ export function OrgaoIcone({ zona, cor, className = "h-11 w-11" }: { zona: ZonaC
       )}
 
       {zona === "pele" && (
-        // Camadas da pele com partículas de radiação
+        // Skin layers with radiation particles
         <g>
           <path d="M5 22 C11 18 17 26 24 22 C31 18 37 26 43 22 L43 30 C37 34 31 26 24 30 C17 34 11 26 5 30 Z" fill={`url(#${id})`} {...traco} />
           <path d="M5 34 C11 30 17 38 24 34 C31 30 37 38 43 34 L43 41 L5 41 Z" fill={cor} fillOpacity=".3" {...traco} />

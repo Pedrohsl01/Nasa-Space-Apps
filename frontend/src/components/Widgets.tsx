@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Clock, Thermometer, Watch } from "lucide-react";
 
-// Moldura compacta dos widgets, no mesmo estilo dos painéis principais
+// Compact widget frame, in the same style as the main panels
 function Widget({ titulo, icone, children }: { titulo: string; icone: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="relative flex flex-1 flex-col rounded-md border border-(--borda) bg-(--card) backdrop-blur-md p-3">
@@ -17,7 +17,7 @@ function Widget({ titulo, icone, children }: { titulo: string; icone: React.Reac
 }
 
 /* ------------------------------------------------------------------ */
-/* Dispositivo de medição (smartwatch, smart ring, pulseira)           */
+/* Measuring device (smartwatch, smart ring, band)           */
 /* ------------------------------------------------------------------ */
 
 type Dispositivo = {
@@ -34,8 +34,8 @@ const DISPOSITIVOS: Dispositivo[] = [
   {
     id: "smartwatch",
     nome: "Smartwatch",
-    posicao: "Pulso",
-    sensores: ["FC", "Temp. pele", "Sono", "Atividade"],
+    posicao: "Wrist",
+    sensores: ["HR", "Skin temp.", "Sleep", "Activity"],
     desenho: (
       <svg viewBox="0 0 64 64" className="h-14 w-14" aria-hidden="true">
         <rect x="22" y="4" width="20" height="12" rx="3" fill="none" stroke={COR} strokeOpacity=".5" strokeWidth="2" />
@@ -49,8 +49,8 @@ const DISPOSITIVOS: Dispositivo[] = [
   {
     id: "smart-ring",
     nome: "Smart Ring",
-    posicao: "Dedo",
-    sensores: ["FC", "Temp. pele", "Sono", "SpO₂"],
+    posicao: "Finger",
+    sensores: ["HR", "Skin temp.", "Sleep", "SpO₂"],
     desenho: (
       <svg viewBox="0 0 64 64" className="h-14 w-14" aria-hidden="true">
         <ellipse cx="32" cy="36" rx="20" ry="20" fill="none" stroke={COR} strokeWidth="6" />
@@ -62,9 +62,9 @@ const DISPOSITIVOS: Dispositivo[] = [
   },
   {
     id: "pulseira",
-    nome: "Pulseira inteligente",
-    posicao: "Antebraço",
-    sensores: ["FC", "Passos", "Sono", "Atividade"],
+    nome: "Smart band",
+    posicao: "Forearm",
+    sensores: ["HR", "Steps", "Sleep", "Activity"],
     desenho: (
       <svg viewBox="0 0 64 64" className="h-14 w-14" aria-hidden="true">
         <rect x="8" y="24" width="48" height="16" rx="8" fill="none" stroke={COR} strokeOpacity=".5" strokeWidth="2" />
@@ -95,7 +95,7 @@ export function DispositivoWidget() {
     try {
       localStorage.setItem(CHAVE_DISPOSITIVO, DISPOSITIVOS[novo].id);
     } catch {
-      /* preferência opcional */
+      /* optional preference */
     }
   };
 
@@ -103,17 +103,17 @@ export function DispositivoWidget() {
   const seta = "rounded bg-slate-800/80 p-1 text-slate-300 hover:bg-cyan-500/20 hover:text-cyan-200";
 
   return (
-    <Widget titulo="Dispositivo de medição" icone={<Watch className="h-3.5 w-3.5" />}>
+    <Widget titulo="Measuring device" icone={<Watch className="h-3.5 w-3.5" />}>
       <div className="flex flex-1 items-center gap-2">
-        <button onClick={() => trocar(-1)} className={seta} aria-label="Dispositivo anterior">
+        <button onClick={() => trocar(-1)} className={seta} aria-label="Previous device">
           <ChevronLeft className="h-3.5 w-3.5" />
         </button>
         <div className="flex flex-1 flex-col items-center text-center">
           <div className="drop-shadow-[0_0_8px_rgba(34,211,238,0.45)]">{d.desenho}</div>
           <p className="mt-1 text-sm font-semibold text-white">{d.nome}</p>
-          <p className="font-mono text-[10px] text-slate-500">{d.posicao} • sincronizado (simulado)</p>
+          <p className="font-mono text-[10px] text-slate-500">{d.posicao} • synced (simulated)</p>
         </div>
-        <button onClick={() => trocar(1)} className={seta} aria-label="Próximo dispositivo">
+        <button onClick={() => trocar(1)} className={seta} aria-label="Next device">
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -134,7 +134,7 @@ export function DispositivoWidget() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Hora: UTC (padrão de controle de missão) e hora local               */
+/* Time: UTC (mission control standard) and local time               */
 /* ------------------------------------------------------------------ */
 
 export function RelogioWidget() {
@@ -144,12 +144,12 @@ export function RelogioWidget() {
     return () => clearInterval(t);
   }, []);
 
-  const utc = agora.toLocaleTimeString("pt-BR", { timeZone: "UTC", hour12: false });
-  const local = agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false });
-  const data = agora.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" });
+  const utc = agora.toLocaleTimeString("en-US", { timeZone: "UTC", hour12: false });
+  const local = agora.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const data = agora.toLocaleDateString("en-US", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" });
 
   return (
-    <Widget titulo="Hora" icone={<Clock className="h-3.5 w-3.5" />}>
+    <Widget titulo="Time" icone={<Clock className="h-3.5 w-3.5" />}>
       <div className="flex flex-1 flex-col justify-center">
         <p className="font-mono text-3xl font-bold leading-none tracking-wider text-white">{utc}</p>
         <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-cyan-400">UTC • {data}</p>
@@ -160,14 +160,14 @@ export function RelogioWidget() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Temperatura externa (ilustrativa, por ambiente)                     */
+/* Outside temperature (illustrative, per environment)                     */
 /* ------------------------------------------------------------------ */
 
-// Valores ILUSTRATIVOS para a demo. Ordem de grandeza comumente citada pela NASA — a confirmar.
+// ILLUSTRATIVE values for the demo. Order of magnitude commonly cited by NASA; to be confirmed.
 const CLIMA: Record<string, { min: number; max: number; ciclo: string; nota: string }> = {
-  "Estacao Orbital": { min: -157, max: 121, ciclo: "dia/noite orbital ~90 min", nota: "Superfície externa ao sol vs. sombra" },
-  "Transito para Marte": { min: -150, max: 120, ciclo: "rotação da nave ~60 min", nota: "Casco: face ao Sol vs. face oposta" },
-  "Base Marciana": { min: -90, max: 0, ciclo: "sol marciano ~24 h 40 min", nota: "Superfície de Marte, perto da base" },
+  "Estacao Orbital": { min: -157, max: 121, ciclo: "orbital day/night ~90 min", nota: "Outer surface in sunlight vs. shadow" },
+  "Transito para Marte": { min: -150, max: 120, ciclo: "spacecraft rotation ~60 min", nota: "Hull: Sun-facing side vs. opposite side" },
+  "Base Marciana": { min: -90, max: 0, ciclo: "Martian sol ~24 h 40 min", nota: "Mars surface, near the base" },
 };
 
 export function TemperaturaExternaWidget({ ambiente, dia }: { ambiente: string; dia: number | null }) {
@@ -178,7 +178,7 @@ export function TemperaturaExternaWidget({ ambiente, dia }: { ambiente: string; 
   }, []);
 
   const clima = CLIMA[ambiente] ?? CLIMA["Base Marciana"];
-  // Oscilação suave entre mínimo e máximo, só para dar vida ao widget (simulado)
+  // Smooth swing between minimum and maximum, just to bring the widget to life (simulated)
   const periodoMin = ambiente === "Estacao Orbital" ? 90 : ambiente === "Transito para Marte" ? 60 : 1480;
   const fase = ((agora / 60000) % periodoMin) / periodoMin + (dia ?? 0) * 0.07;
   const fator = (Math.sin(fase * 2 * Math.PI) + 1) / 2;
@@ -186,7 +186,7 @@ export function TemperaturaExternaWidget({ ambiente, dia }: { ambiente: string; 
   const quente = temp > 0;
 
   return (
-    <Widget titulo="Temperatura externa" icone={<Thermometer className="h-3.5 w-3.5" />}>
+    <Widget titulo="Outside temperature" icone={<Thermometer className="h-3.5 w-3.5" />}>
       <div className="flex flex-1 flex-col justify-center">
         <p className={`font-mono text-3xl font-bold leading-none ${quente ? "text-orange-300" : "text-sky-300"}`}>
           {temp > 0 ? "+" : ""}
@@ -202,7 +202,7 @@ export function TemperaturaExternaWidget({ ambiente, dia }: { ambiente: string; 
           <span>+{clima.max} °C</span>
         </div>
         <p className="mt-1 text-[10px] text-slate-400">{clima.nota}</p>
-        <p className="font-mono text-[9px] text-slate-600">{clima.ciclo} • valor ilustrativo (simulado)</p>
+        <p className="font-mono text-[9px] text-slate-600">{clima.ciclo} • illustrative value (simulated)</p>
       </div>
     </Widget>
   );
