@@ -124,7 +124,7 @@ In compliance with the **NASA Space Apps Challenge** guidelines:
 
 ---
 
-## 👥 Team Members — NERV Systems
+## 👥 Team Members — Astro Health BR
 
 - **Alexandra Silvestre de Souza da Silva**
 - **Larissa Santana Silva**
