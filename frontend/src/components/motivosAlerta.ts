@@ -119,3 +119,26 @@ export function motivosPorZona(
   for (const z of Object.keys(saida) as ZonaCorpo[]) saida[z]!.sort((a, b) => b.nivel - a.nivel || Number(!!a.secundario) - Number(!!b.secundario));
   return saida;
 }
+
+// ---------------- Alerta crítico de saúde (pop-up) ----------------
+export interface OrgaoEmAlerta {
+  zona: ZonaCorpo;
+  nivel: number; // 2 = laranja (atenção), 3 = vermelho (crítico)
+  motivo: Motivo;
+}
+
+/** Órgãos coloridos no mapa corporal (mesma regra de cor do BodyMap: o maior nível de cada zona). */
+export function orgaosEmAlerta(motivos: Partial<Record<ZonaCorpo, Motivo[]>>): OrgaoEmAlerta[] {
+  return (Object.entries(motivos) as [ZonaCorpo, Motivo[] | undefined][])
+    .filter(([, lista]) => lista && lista.length > 0)
+    .map(([zona, lista]) => {
+      const principal = [...lista!].sort((a, b) => b.nivel - a.nivel || Number(!!a.secundario) - Number(!!b.secundario))[0];
+      return { zona, nivel: principal.nivel, motivo: principal };
+    })
+    .sort((a, b) => b.nivel - a.nivel);
+}
+
+/** Regra do alerta crítico: pelo menos 1 órgão vermelho ou pelo menos 2 órgãos laranja. */
+export function exigeAlertaCritico(orgaos: OrgaoEmAlerta[]) {
+  return orgaos.some((o) => o.nivel >= 3) || orgaos.filter((o) => o.nivel === 2).length >= 2;
+}

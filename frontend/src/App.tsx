@@ -12,7 +12,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { BodyMap, type RegiaoSelecionada } from "./components/BodyMap";
-import { motivosPorZona } from "./components/motivosAlerta";
+import { exigeAlertaCritico, motivosPorZona, orgaosEmAlerta } from "./components/motivosAlerta";
 import { META_TREINO, TendenciaChart } from "./components/TendenciaChart";
 import { RegistroModal } from "./components/RegistroModal";
 import { SpinoffModal } from "./components/SpinoffModal";
@@ -22,20 +22,32 @@ import { GradeLayout } from "./components/GradeLayout";
 import { WearablePlayer } from "./components/WearablePlayer";
 import { CoachCompacto } from "./components/CoachCompacto";
 import { ExamesPanel, PredicaoPanel } from "./components/PaineisAnalise";
-import { ProntidaoHUD, type SinalResumo } from "./components/ProntidaoHUD";
+import { ProntidaoHUD, type SinalResumo, type Sincronia } from "./components/ProntidaoHUD";
 import { LocalMissaoWidget } from "./components/LocalMissaoWidget";
 import { LogoApp } from "./components/LogoApp";
+import { AlertaCriticoPopup } from "./components/AlertaCriticoPopup";
 import { RelatoEnviadoPopup } from "./components/RelatoEnviadoPopup";
 import {
   ESTADO_VAZIO,
+  XP_CONTRAMEDIDA,
   XP_RELATO,
-  calcularAptidaoEva,
   carregarHud,
+  chaveContramedida,
+  contramedidasDoDia,
+  horaAplicada,
   salvarHud,
   type EstadoTripulante,
 } from "./components/prontidao";
-import { analisarDia, listarAstronautas, registrarDia, telemetriaHoraria } from "./api";
-import type { Analise, Astronauta, Desvio, Medicoes, RelatoDesconforto, TelemetriaHoraria } from "./types";
+import {
+  analisarDia,
+  avancarHoraAoVivo,
+  estadoAoVivo,
+  listarAstronautas,
+  registrarDia,
+  reiniciarDiaAoVivo,
+  type EventosAoVivo,
+} from "./api";
+import type { Analise, Astronauta, Desvio, Medicoes, ProntidaoCumulativa, RelatoDesconforto, TelemetriaHoraria } from "./types";
 
 const NOME_AMBIENTE: Record<string, string> = {
   "Estacao Orbital": "Estação Orbital",
@@ -47,6 +59,13 @@ const TEMA_AMBIENTE: Record<string, "mars" | "transit" | "station"> = {
   "Base Marciana": "mars",
   "Transito para Marte": "transit",
   "Estacao Orbital": "station",
+};
+
+// Vídeo de fundo por cenário (o dia selecionado define o local; sem dado ainda, fica a Base Marciana)
+const VIDEO_AMBIENTE: Record<string, string> = {
+  "Base Marciana": "/video/video_marte.mp4",
+  "Transito para Marte": "/video/video_transito_marte.mp4",
+  "Estacao Orbital": "/video/video_estacao_orbital.mp4",
 };
 
 const NOME_CENARIO: Record<string, string> = {
@@ -220,44 +239,12 @@ export function App() {
     return () => clearTimeout(t);
   }, [idAstronauta, diaMissao, carregarAnalise, listaRelatos]);
 
-  // ---------------- Wearable 24 h: relógio virtual, play/pause e picos simulados ----------------
-  const [horaVirtual, setHoraVirtual] = useState(() => new Date().getHours());
+  // ---------------- Wearable ao vivo: uma leitura por hora, como um smartwatch ----------------
   const [tocando, setTocando] = useState(false);
-  const [picosPorDia, setPicosPorDia] = useState<Record<string, number[]>>({});
+  const [velocidade, setVelocidade] = useState<1 | 2 | 5>(1);
   const [horaria, setHoraria] = useState<TelemetriaHoraria | null>(null);
-  const [carregandoHoraria, setCarregandoHoraria] = useState(false);
-  const chaveDia = `${idAstronauta}-${diaMissao}`;
-  const picos = useMemo(() => picosPorDia[chaveDia] ?? [], [picosPorDia, chaveDia]);
-
-  useEffect(() => {
-    if (diaMissao === null) return;
-    let cancelado = false;
-    setCarregandoHoraria(true);
-    const t = setTimeout(() => {
-      telemetriaHoraria(idAstronauta, diaMissao, horaVirtual, picos)
-        .then((r) => !cancelado && setHoraria(r))
-        .catch(() => !cancelado && setHoraria(null))
-        .finally(() => !cancelado && setCarregandoHoraria(false));
-    }, 120);
-    return () => {
-      cancelado = true;
-      clearTimeout(t);
-    };
-  }, [idAstronauta, diaMissao, horaVirtual, picos]);
-
-  // Play: avança 1 hora a cada 1,5 s e para às 23:00
-  useEffect(() => {
-    if (!tocando) return;
-    if (horaVirtual >= 23) {
-      setTocando(false);
-      return;
-    }
-    const t = setTimeout(() => setHoraVirtual((h) => Math.min(23, h + 1)), 1500);
-    return () => clearTimeout(t);
-  }, [tocando, horaVirtual]);
-
-  const simularPico = () =>
-    setPicosPorDia((atual) => ({ ...atual, [chaveDia]: [...new Set([...(atual[chaveDia] ?? []), horaVirtual])] }));
+  const [coletando, setColetando] = useState(false);
+  const [erroSync, setErroSync] = useState(false);
 
   // Avisos somem sozinhos depois de alguns segundos
   useEffect(() => {
@@ -279,7 +266,7 @@ export function App() {
   };
 
 
-  const executarRegistro = async (opcoes: { medicoes?: Medicoes; simular_anomalia?: boolean }) => {
+  const executarRegistro = async (opcoes: { medicoes?: Medicoes; simular_anomalia?: boolean }): Promise<boolean> => {
     setRegistrando(true);
     setErroRegistro(null);
     try {
@@ -297,10 +284,12 @@ export function App() {
             ? `simulado com anomalia: ${NOME_CENARIO[resp.cenario_simulado] ?? resp.cenario_simulado}`
             : "simulado (dia normal)";
       setAviso(`Dia ${resp.dia_registrado} ${origem} e salvo na base • Nível ${triagemNova.codigo_semaforo} (${triagemNova.categoria_risco})`);
+      return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (modalRegistro) setErroRegistro(msg);
       else setErro(msg);
+      return false;
     } finally {
       setRegistrando(false);
     }
@@ -312,7 +301,7 @@ export function App() {
   const ia = dados?.orientacao_ia;
   const tel = dados?.telemetria_dia;
   const alertas = useMemo(() => payload?.indicadores_em_alerta ?? {}, [payload]);
-  const iaOnline = ia ? ia.fonte_analise === "grok_live" || ia.fonte_analise === "grok_cache" : false;
+  const iaOnline = ia ? ia.fonte_analise === "groq_live" || ia.fonte_analise === "groq_cache" : false;
 
   // Mapa corporal combina a triagem do dia com o alerta da hora do wearable (ex.: pico simulado)
   const pontoHora = horaria?.dia_missao === diaMissao ? horaria.ponto_atual : null;
@@ -329,6 +318,18 @@ export function App() {
       ),
     [alertas, triagem, codigo, alertaHora],
   );
+
+  // Alerta crítico de saúde: 1 órgão vermelho ou 2+ órgãos laranja no mapa corporal.
+  // Cada combinação (tripulante, dia, órgãos e níveis) aparece uma vez; depois de "Ciente" só volta se o quadro mudar.
+  const orgaosAlerta = useMemo(() => orgaosEmAlerta(motivosMapa), [motivosMapa]);
+  const assinaturaAlerta = exigeAlertaCritico(orgaosAlerta)
+    ? `${idAstronauta}|${diaMissao}|${orgaosAlerta.map((o) => `${o.zona}:${o.nivel}`).join(",")}`
+    : null;
+  const [alertasVistos, setAlertasVistos] = useState<Set<string>>(() => new Set());
+  const mostrarAlertaCritico = assinaturaAlerta !== null && !alertasVistos.has(assinaturaAlerta);
+  const fecharAlertaCritico = useCallback(() => {
+    if (assinaturaAlerta) setAlertasVistos((vistos) => new Set(vistos).add(assinaturaAlerta));
+  }, [assinaturaAlerta]);
 
   // Gamificação: metas diárias simples e transparentes (metas do projeto, não clínicas)
   const missoes = useMemo(() => {
@@ -350,20 +351,97 @@ export function App() {
         : { texto: "text-[#34D399]", borda: "border-[#34D399]/50", fundo: "bg-[#34D399]/10" };
 
   const ambienteDia = payload?.contexto_missao.ambiente ?? "";
+  const videoFundo = VIDEO_AMBIENTE[ambienteDia] ?? VIDEO_AMBIENTE["Base Marciana"];
   const atrasoSinal =
     ambienteDia === "Estacao Orbital" ? "Comunicação com a Terra quase em tempo real" : "Atraso de sinal com a Terra de até ~20 min por trecho";
 
   // ---------------- HUD: prontidão, chat de contramedidas e sinais resumidos ----------------
   const estadoHud = hud[idAstronauta] ?? ESTADO_VAZIO;
   const chaveDiaHud = String(diaMissao ?? 0);
-  const aplicadasDia = estadoHud.aplicadas[chaveDiaHud] ?? [];
-  const nAplicadas = aplicadasDia.length;
-  // Aptidão para EVA: recalcula com o wearable da hora, os dados do dia, os alertas ativos,
-  // os desconfortos do mapa corporal e as contramedidas aplicadas (todos do tripulante selecionado)
-  const prontidao = useMemo(
-    () => calcularAptidaoEva({ ponto: pontoHora, tel: tel ?? null, motivos: motivosMapa, relatos: listaRelatos, nAplicadas }),
-    [pontoHora, tel, motivosMapa, listaRelatos, nAplicadas],
+  // Assinatura estável (string) para os hooks não recalcularem a cada render
+  const assinaturaAplicadas = JSON.stringify(estadoHud.aplicadas[chaveDiaHud] ?? []);
+  const aplicadasDia = useMemo(() => JSON.parse(assinaturaAplicadas) as string[], [assinaturaAplicadas]);
+  const contramedidas = useMemo(() => contramedidasDoDia(aplicadasDia), [aplicadasDia]);
+
+  // Relógio = hora da última leitura coletada do dia ao vivo
+  const aoVivoDoDia = horaria?.id_astronauta === idAstronauta && horaria?.dia_missao === diaMissao ? horaria : null;
+  const horaAtual = aoVivoDoDia?.hora ?? 0;
+  // Prontidão / Aptidão EVA CUMULATIVA: o backend roda um passo do integrador a cada leitura nova
+  const prontidao: ProntidaoCumulativa | null = aoVivoDoDia?.prontidao ?? null;
+  const ganhoPendente = useRef<{ antes: number; xp: number } | null>(null);
+
+  // Eventos do dia (mapa corporal e contramedidas) vão em toda chamada ao vivo: valem a partir da hora em que ocorreram
+  const eventosRef = useRef<EventosAoVivo | null>(null);
+  eventosRef.current =
+    diaMissao === null
+      ? null
+      : { id_astronauta: idAstronauta, dia_missao: diaMissao, desconfortos: listaRelatos, contramedidas, horaPadrao: horaAtual };
+  const horariaRef = useRef<TelemetriaHoraria | null>(null);
+  horariaRef.current = horaria;
+  // Chamadas ao vivo em fila (uma por vez): um tick nunca atropela o outro
+  const filaAoVivo = useRef<Promise<unknown>>(Promise.resolve());
+  const chamarAoVivo = useCallback(
+    (pedido: (e: EventosAoVivo) => Promise<TelemetriaHoraria>) => {
+      filaAoVivo.current = filaAoVivo.current.then(async () => {
+        const ev = eventosRef.current;
+        if (!ev) return;
+        setColetando(true);
+        try {
+          const r = await pedido(ev);
+          setHoraria(r);
+          setErroSync(false);
+          if (r.virada) {
+            // Depois das 23:00 o backend abre o dia seguinte às 00:00 (e grava um dia simulado se ele não existia)
+            setDiaMissao(r.dia_missao);
+            if (r.virada.registrado) {
+              carregarAstronautas();
+              setAviso(`Dia ${r.virada.para} simulado (dia normal) e salvo na base`);
+            }
+          }
+        } catch (e) {
+          setErroSync(true);
+          setTocando(false);
+          setErro(e instanceof Error ? e.message : String(e));
+        } finally {
+          setColetando(false);
+        }
+      });
+      return filaAoVivo.current;
+    },
+    [carregarAstronautas],
   );
+
+  // Trocar de tripulante/dia: retoma a sessão ao vivo desse dia ou começa às 00:00 com uma leitura
+  useEffect(() => {
+    if (diaMissao === null) return;
+    const h = horariaRef.current;
+    if (h?.id_astronauta === idAstronauta && h?.dia_missao === diaMissao) return;
+    chamarAoVivo(estadoAoVivo);
+  }, [idAstronauta, diaMissao, chamarAoVivo]);
+
+  // Relato no mapa ou contramedida aplicada: recalcula a prontidão na hora atual (sem gerar leitura)
+  const assinaturaEventos = JSON.stringify([listaRelatos, contramedidas]);
+  const eventosSincronizados = useRef(assinaturaEventos);
+  useEffect(() => {
+    if (eventosSincronizados.current === assinaturaEventos) return;
+    eventosSincronizados.current = assinaturaEventos;
+    const h = horariaRef.current;
+    if (!h || h.id_astronauta !== idAstronauta || h.dia_missao !== diaMissao) return;
+    const t = setTimeout(() => chamarAoVivo(estadoAoVivo), 150);
+    return () => clearTimeout(t);
+  }, [assinaturaEventos, idAstronauta, diaMissao, chamarAoVivo]);
+
+  // Play: coleta 1 hora a cada 5 s (1x), 2,5 s (2x) ou 1 s (5x) até o operador pausar; vira o dia sozinho
+  useEffect(() => {
+    if (!tocando || !aoVivoDoDia) return;
+    const t = setTimeout(() => chamarAoVivo(avancarHoraAoVivo), 5000 / velocidade);
+    return () => clearTimeout(t);
+  }, [tocando, aoVivoDoDia, velocidade, chamarAoVivo]);
+
+  const avancarUmaHora = () => chamarAoVivo(avancarHoraAoVivo);
+  const simularPico = () => chamarAoVivo((e) => avancarHoraAoVivo(e, true));
+  const reiniciarDia = () => chamarAoVivo((e) => reiniciarDiaAoVivo(e));
+  const proximoDia = () => chamarAoVivo((e) => reiniciarDiaAoVivo(e, true));
 
   const mostrarGanho = (antes: number, depois: number, xpGanho: number) => {
     const delta = depois - antes;
@@ -376,6 +454,28 @@ export function App() {
     if (!partes.length) return;
     const texto = partes.join(" • ");
     setGanho({ id: Date.now(), texto });
+  };
+  // O novo valor chega do backend: mostra o ganho/perda assim que a resposta pedida pela interação volta
+  useEffect(() => {
+    if (!prontidao || !ganhoPendente.current) return;
+    const { antes, xp: xpGanho } = ganhoPendente.current;
+    ganhoPendente.current = null;
+    mostrarGanho(antes, prontidao.aptidao_eva, xpGanho);
+  }, [prontidao]);
+
+  // Contramedida aplicada na hora do relógio virtual (de novo = desfaz): acelera a recuperação a partir dela
+  const alternarContramedida = (texto: string) => {
+    if (diaMissao === null) return;
+    const hora = horaAplicada(aplicadasDia, texto);
+    // Desfazer devolve o XP (aplicar/desfazer em sequência não acumula pontos)
+    const xpGanho = hora === null ? XP_CONTRAMEDIDA : -XP_CONTRAMEDIDA;
+    ganhoPendente.current = { antes: prontidao?.aptidao_eva ?? 0, xp: xpGanho };
+    mudarHud(idAstronauta, (e) => {
+      const atuais = e.aplicadas[chaveDiaHud] ?? [];
+      const novas =
+        hora === null ? [...atuais, chaveContramedida(horaAtual, texto)] : atuais.filter((c) => c !== chaveContramedida(hora, texto));
+      return { ...e, xp: Math.max(0, e.xp + xpGanho), aplicadas: { ...e.aplicadas, [chaveDiaHud]: novas } };
+    });
   };
 
   const valorOu = (v: number | null | undefined, unidade: string) => (v === null || v === undefined ? "—" : `${v}${unidade}`);
@@ -393,15 +493,25 @@ export function App() {
       ]
     : [];
 
+  const sincronia: Sincronia = erroSync
+    ? { estado: "erro", texto: "Sem sincronia com o wearable" }
+    : !aoVivoDoDia
+      ? { estado: "coletando", texto: "Conectando ao wearable…" }
+      : {
+          estado: coletando ? "coletando" : "ok",
+          texto: `${coletando ? "Coletando" : "Sincronizado"} • Última leitura: ${aoVivoDoDia.ultima_leitura ?? aoVivoDoDia.ponto_atual.rotulo}`,
+        };
+
   const seletor = "rounded border border-cyan-900 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none";
 
   return (
     // Tema de cores pelo cenário do dia: Base Marciana, Trânsito para Marte ou Estação Orbital
     <div data-theme={TEMA_AMBIENTE[ambienteDia] ?? "transit"} className="min-h-screen bg-[#03060c] pb-8 text-slate-200 font-sans">
-      {/* Vídeo de fundo (Base Marciana em loop): mudo, sem controles, atrás de tudo */}
+      {/* Vídeo de fundo do cenário do dia, em loop: mudo, sem controles, atrás de tudo */}
       <video
-        className="pointer-events-none fixed inset-0 h-full w-full object-cover motion-reduce:hidden"
-        src="/video/base_marciana_loop.mp4"
+        key={videoFundo}
+        className="pointer-events-none fixed inset-0 h-full w-full origin-top-left scale-[1.12] object-cover motion-reduce:hidden" /* ampliado 12% a partir do canto superior esquerdo: a marca d'água original do vídeo sai da tela (o selo fixo fica no lugar) */
+        src={videoFundo}
         autoPlay
         muted
         loop
@@ -486,7 +596,7 @@ export function App() {
         {/* Barra de prontidão gamificada + sinais vitais resumidos */}
         {dados && tel && (
           <div className="mx-auto mt-2 max-w-[1500px] border-t border-(--borda) pt-2">
-            <ProntidaoHUD prontidao={prontidao} xp={estadoHud.xp} ganho={ganho} sinais={sinais} />
+            <ProntidaoHUD prontidao={prontidao} xp={estadoHud.xp} ganho={ganho} sinais={sinais} sincronia={sincronia} />
           </div>
         )}
       </header>
@@ -572,19 +682,17 @@ export function App() {
             <div key="wearable">
             <WearablePlayer
               className="h-full"
-              dados={horaria}
-              hora={horaVirtual}
+              dados={aoVivoDoDia}
               tocando={tocando}
-              carregando={carregandoHoraria}
-              onHora={(h) => {
-                setTocando(false);
-                setHoraVirtual(h);
-              }}
-              onTocar={(t) => {
-                if (t && horaVirtual >= 23) setHoraVirtual(0);
-                setTocando(t);
-              }}
+              velocidade={velocidade}
+              coletando={coletando}
+              erroSync={erroSync}
+              onTocar={setTocando}
+              onVelocidade={setVelocidade}
+              onAvancar={avancarUmaHora}
               onPico={simularPico}
+              onReiniciar={reiniciarDia}
+              onProximoDia={proximoDia}
             />
             </div>
             {/* ============ MAPA CORPORAL ============ */}
@@ -595,25 +703,23 @@ export function App() {
               className="h-full"
               extra={<LocalMissaoWidget ambiente={ambienteDia} dia={diaMissao} />}
             >
-              {/* Personagem conforme o tripulante: sexo "F" usa o modelo feminino (ex.: Dra. Helena Vance) */}
+              {/* Personagem conforme o tripulante: sexo "F" usa o modelo feminino (ex.: Dra. Lucia Caminos) */}
               <BodyMap
                 genero={astronauta?.sexo === "F" ? "F" : "M"}
                 motivos={motivosMapa}
                 relatos={relatosAtuais}
                 selecionada={regiaoSel}
                 onSelecionar={setRegiaoSel}
-                onSalvarRelato={(relato) => {
-                  const chave = `${relato.vista}:${relato.regiaoId}`;
+                onSalvarRelato={(novoRelato) => {
+                  const chave = `${novoRelato.vista}:${novoRelato.regiaoId}`;
+                  // A dor passa a pesar a partir da hora do relógio virtual em que foi relatada (editar mantém a hora)
+                  const relato = { ...novoRelato, hora: relatosAtuais[chave]?.hora ?? horaAtual };
                   const novos = { ...relatosAtuais, [chave]: relato };
                   atualizarRelatos({ ...relatos, [chaveRelatos]: novos });
                   // Relato novo rende XP; mudar a intensidade de um relato só mexe na prontidão
                   const xpRelato = chave in relatosAtuais ? 0 : XP_RELATO;
                   if (xpRelato) mudarHud(idAstronauta, (e) => ({ ...e, xp: e.xp + xpRelato }));
-                  mostrarGanho(
-                    prontidao.valor,
-                    calcularAptidaoEva({ ponto: pontoHora, tel: tel ?? null, motivos: motivosMapa, relatos: Object.values(novos), nAplicadas }).valor,
-                    xpRelato,
-                  );
+                  ganhoPendente.current = { antes: prontidao?.aptidao_eva ?? 0, xp: xpRelato };
                   setRelatoEnviado(relato);
                 }}
                 onRemoverRelato={(chave) => {
@@ -648,7 +754,7 @@ export function App() {
                         iaOnline ? "border-cyan-600/70 text-cyan-300" : "border-slate-600 text-slate-400"
                       }`}
                     >
-                      {iaOnline ? "Grok AI" : "Telemetria local"}
+                      {iaOnline ? "Groq AI" : "Telemetria local"}
                     </span>
                   )}
                   <button
@@ -695,12 +801,30 @@ export function App() {
                   <div>
                     <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Contramedidas</p>
                     <ol className="mt-1.5 space-y-1.5">
-                      {(ia.acao_imediata_astronauta ?? []).map((acao, i) => (
-                        <li key={i} className="flex gap-2 rounded border-l-2 border-cyan-400 bg-(--subcard) p-2 text-xs text-slate-200">
-                          <span className="font-mono text-cyan-400">{String(i + 1).padStart(2, "0")}</span>
-                          {acao}
-                        </li>
-                      ))}
+                      {(ia.acao_imediata_astronauta ?? []).map((acao, i) => {
+                        const hora = horaAplicada(aplicadasDia, acao);
+                        return (
+                          <li key={i} className="flex items-start gap-2 rounded border-l-2 border-cyan-400 bg-(--subcard) p-2 text-xs text-slate-200">
+                            <span className="font-mono text-cyan-400">{String(i + 1).padStart(2, "0")}</span>
+                            <span className="flex-1">{acao}</span>
+                            <button
+                              onClick={() => alternarContramedida(acao)}
+                              title={
+                                hora === null
+                                  ? `Marcar como aplicada às ${String(horaAtual).padStart(2, "0")}:00 (acelera a recuperação a partir dessa hora)`
+                                  : "Desfazer"
+                              }
+                              className={`shrink-0 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider ${
+                                hora === null
+                                  ? "border-cyan-700 text-cyan-300 hover:bg-cyan-500/10"
+                                  : "border-emerald-600/70 bg-emerald-500/10 text-emerald-300"
+                              }`}
+                            >
+                              {hora === null ? "Aplicar" : `✓ ${String(hora).padStart(2, "0")}:00`}
+                            </button>
+                          </li>
+                        );
+                      })}
                     </ol>
                   </div>
                   <div className="mt-auto rounded border border-slate-800 bg-slate-950 p-3 text-xs">
@@ -753,8 +877,9 @@ export function App() {
             </div>
 
             {/* ============ TELEMETRIA (rolável) ============ */}
-            {/* self-start: o quadro termina logo depois dos cards (não estica até a altura da Tendência ao lado) */}
-            <div key="telemetria" className="self-start">
+            {/* O quadro termina logo depois dos cards; no espaço que sobra embaixo fica o selo de IA,
+                alinhado com a base do quadro de Tendência ao lado */}
+            <div key="telemetria" className="flex flex-col gap-4">
             <Painel
               titulo="Telemetria vs. linha de base"
               extra={
@@ -817,7 +942,16 @@ export function App() {
                   </div>
               </div>
             </Painel>
-
+              {/* Selo de conteúdo de IA (maior) */}
+              <div className="mt-auto flex justify-end">
+                <div className="flex items-center gap-2.5 text-white/85 select-none" aria-label="Conteúdo criado com IA">
+                  <span className="text-3xl font-black leading-none">IA</span>
+                  <span className="leading-tight">
+                    <span className="block text-sm font-semibold uppercase tracking-wide">Conteúdo criado com IA</span>
+                    <span className="block text-[9px] uppercase tracking-[0.15em] text-white/60">Inteligência artificial</span>
+                  </span>
+                </div>
+              </div>
             </div>
           </GradeLayout>
         )}
@@ -836,8 +970,16 @@ export function App() {
       )}
 
       {/* Aviso obrigatório: rodapé fino fixo, sem ocupar espaço no topo */}
-      <footer className="fixed inset-x-0 bottom-0 z-30 border-t border-amber-900/40 bg-[#0b0803]/95 px-4 py-1 text-center text-[10px] text-amber-200/80">
-        Protótipo de hackathon (NASA Space Apps 2026) • DADOS SIMULADOS • Não é dispositivo médico e não substitui avaliação profissional.
+      <footer className="fixed inset-x-0 bottom-0 z-30 border-t border-amber-900/40 bg-[#0b0803]/95 py-1 pr-52 pl-4 text-center text-[10px] text-amber-200/80">
+        <span>Protótipo de hackathon (NASA Space Apps 2026) • DADOS SIMULADOS • Não é dispositivo médico e não substitui avaliação profissional.</span>
+        {/* Selo do vídeo de fundo (gerado com IA), fixo no canto direito do rodapé */}
+        <span className="absolute top-1/2 right-4 flex -translate-y-1/2 items-center gap-1.5 text-white/80 select-none" aria-label="Conteúdo criado com IA">
+          <span className="text-sm font-black leading-none">IA</span>
+          <span className="text-left leading-none">
+            <span className="block text-[9px] font-semibold uppercase tracking-wide">Conteúdo criado com IA</span>
+            <span className="block text-[7px] uppercase tracking-[0.15em] text-white/55">Inteligência artificial</span>
+          </span>
+        </span>
       </footer>
 
       <RegistroModal
@@ -854,6 +996,12 @@ export function App() {
       />
       <SpinoffModal aberto={modalSpinoff} onFechar={() => setModalSpinoff(false)} />
       <RelatoEnviadoPopup relato={relatoEnviado} onFechar={fecharRelatoEnviado} />
+      <AlertaCriticoPopup
+        orgaos={mostrarAlertaCritico && !relatoEnviado ? orgaosAlerta : null}
+        tripulante={astronauta ? astronauta.nome : idAstronauta}
+        dia={diaMissao}
+        onFechar={fecharAlertaCritico}
+      />
     </div>
   );
 }

@@ -8,6 +8,7 @@ do ambiente de missão. A variação é estocástica, mas determinística: a sem
 Limiares horários e perfis de atividade são ESCOLHAS DE PROJETO para a demo (a confirmar com
 profissional de saúde), não critérios clínicos oficiais.
 """
+import math
 import random
 import zlib
 from typing import Any, Dict, List, Optional
@@ -138,32 +139,36 @@ def _horas_de_sono(sono_horas: float) -> set:
     return {(INICIO_SONO + i) % 24 for i in range(n)}
 
 
-def gerar_dia(registro: Dict[str, Any], picos: Optional[List[int]] = None) -> Dict[str, Any]:
+# ---------------------------------------------------------------------------
+# Gerador INCREMENTAL de leituras (smartwatch): uma hora por vez
+#
+#   valor(h+1) = esperado(h+1) + resíduo(h+1) + efeito(h+1)
+#   resíduo(h+1) = ρ·resíduo(h) + √(1−ρ²)·σ·N(0,1)        (continuidade autorregressiva)
+#   efeito(h+1)  = 0,4·efeito(h) + 0,6·alvo(eventos em h)  (dor, contramedida e fadiga entram com atraso)
+#   esperado(h)  = repouso do dia + perfil da atividade + ritmo circadiano da hora
+# ---------------------------------------------------------------------------
+SINAIS = ["fc_bpm", "pa_sistolica", "pa_diastolica", "temperatura_c", "spo2_pct", "hrv_ms", "estresse_wearable"]
+# Desvio-padrão do ruído estacionário por sinal (hrv_ms é fração do esperado)
+SIGMA = {"fc_bpm": 3.0, "pa_sistolica": 4.0, "pa_diastolica": 3.0, "temperatura_c": 0.08, "spo2_pct": 0.6, "hrv_ms": 0.08, "estresse_wearable": 6.0}
+RHO_AR = 0.6  # autocorrelação de 1 h
+LAG_EFEITO = 0.4  # fração do efeito da hora anterior que permanece (resposta fisiológica gradual)
+
+
+def planejar_dia(registro: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Gera os 24 pontos horários a partir do registro diário (uma linha da base, como dict).
-    picos: horas em que um pico agudo de wearable deve ser injetado (botão "Simular Pico Wearable").
+    Plano do dia a partir do registro diário: agenda de atividades (rotina do ambiente, janela de sono,
+    minutos de treino por hora), repouso de referência e horas de lacuna de sinal.
+    Não gera nenhuma leitura: as leituras saem uma a uma de iniciar_leitura / gerar_proxima_leitura_horaria.
     """
-    picos = sorted(set(h for h in (picos or []) if 0 <= h <= 23))
     id_ast = str(registro["id_astronauta"])
     dia = int(registro["dia_missao"])
     ambiente = str(registro["ambiente"])
     rotina = ROTINAS.get(ambiente, ROTINAS["Estacao Orbital"])
 
-    fc_rep = float(registro["fc_repouso"])
-    pas_dia = float(registro["pa_sistolica"])
-    pad_dia = float(registro["pa_diastolica"])
-    temp_dia = float(registro["temperatura_c"])
+    base_fc = float(registro["base_fc_repouso"])
     sono = float(registro["sono_horas"])
     humor = int(registro["humor"])
-    base_fc = float(registro["base_fc_repouso"])
-    base_sono = float(registro["base_sono"])
-
-    # HRV individual simulada: quem tem FC de base mais baixa tende a ter HRV maior
-    hrv_base = 55 + (70 - base_fc) * 1.2
-    # Sono curto e humor baixo elevam o estresse e reduzem a HRV ao longo do dia
-    deficit_sono = max(0.0, base_sono - sono)
-    ajuste_estresse = deficit_sono * 6 + (4 - humor) * 7 + (6 if ambiente == "Transito para Marte" else 0)
-    fator_hrv_dia = max(0.5, 1 - deficit_sono * 0.07 - max(0, 4 - humor) * 0.05)
+    deficit_sono = max(0.0, float(registro["base_sono"]) - sono)
 
     horas_sono = _horas_de_sono(sono)
     treino_por_hora = _distribuir_treino(ambiente, int(registro["treino_resistido_min"]))
@@ -175,83 +180,225 @@ def gerar_dia(registro: Dict[str, Any], picos: Optional[List[int]] = None) -> Di
         inicio = rng_dia.choice([2, 3, 13, 14, 15])
         horas_sem_sinal = {inicio, inicio + 1}
 
-    pontos: List[Dict[str, Any]] = []
+    agenda: List[Dict[str, Any]] = []
     acumulado = 0
     for h in range(24):
         if h in horas_sono:
             perfil_id, atividade, descricao = "sono", "Sono", "Janela de sono"
         else:
             perfil_id, atividade, descricao = rotina.get(h, ("repouso", "Pausa", "Tempo livre"))
-
-        minutos_treino = treino_por_hora.get(h, 0) if h not in horas_sono else 0
-        if perfil_id in ("resistido", "aerobico"):
-            if minutos_treino < 20:
-                perfil_id = "repouso"
-                atividade = f"{atividade} (não realizado)" if minutos_treino == 0 else f"{atividade} (parcial)"
-        acumulado += minutos_treino
-
-        p = PERFIS[perfil_id]
-        esperado = {
-            "fc_bpm": fc_rep + p["fc"],
-            "pa_sistolica": pas_dia + p["pas"],
-            "pa_diastolica": pad_dia + p["pad"],
-            "temperatura_c": temp_dia + p["temp"],
-            "spo2_pct": p["spo2"],
-            "hrv_ms": hrv_base * fator_hrv_dia * p["hrv"],
-            "estresse_wearable": min(100.0, p["estresse"] + ajuste_estresse),
-        }
-
-        rng = random.Random(_semente(id_ast, dia, h))
-        valor = {
-            "fc_bpm": esperado["fc_bpm"] + rng.gauss(0, 3),
-            "pa_sistolica": esperado["pa_sistolica"] + rng.gauss(0, 4),
-            "pa_diastolica": esperado["pa_diastolica"] + rng.gauss(0, 3),
-            "temperatura_c": esperado["temperatura_c"] + rng.gauss(0, 0.08),
-            "spo2_pct": esperado["spo2_pct"] + rng.gauss(0, 0.6),
-            "hrv_ms": esperado["hrv_ms"] * (1 + rng.gauss(0, 0.08)),
-            "estresse_wearable": esperado["estresse_wearable"] + rng.gauss(0, 6),
-        }
-        # Oscilação espontânea rara (~3% das horas fora do sono), para a curva não ser "perfeita"
-        if h not in horas_sono and rng.random() < 0.03:
-            valor["fc_bpm"] += rng.uniform(18, 26)
-            valor["hrv_ms"] *= 0.6
-
-        pico = None
-        if h in picos:
-            pico = _injetar_pico(valor, ambiente, perfil_id, _semente(id_ast, dia, h, "pico"))
-
-        sem_sinal = h in horas_sem_sinal and pico is None
-        ponto: Dict[str, Any] = {
-            "hora": h,
-            "rotulo": f"{h:02d}:00",
-            "atividade": atividade,
-            "descricao": descricao,
-            "perfil": perfil_id,
-            "treino_min": minutos_treino,
-            "treino_min_acumulado": acumulado,
-            "sem_sinal": sem_sinal,
-            "pico_simulado": pico,
-            "esperado": {k: _arredondar(k, v) for k, v in esperado.items()},
-        }
-        if sem_sinal:
-            ponto.update({k: None for k in valor})
-            ponto.update({"semaforo_hora": 1, "partes_afetadas": "nenhuma", "alertas": []})
-        else:
-            valor = _limitar(valor)
-            ponto.update({k: _arredondar(k, v) for k, v in valor.items()})
-            ponto.update(_avaliar_hora(ponto, esperado, perfil_id))
-        pontos.append(ponto)
+        minutos = treino_por_hora.get(h, 0) if h not in horas_sono else 0
+        if perfil_id in ("resistido", "aerobico") and minutos < 20:
+            perfil_id = "repouso"
+            atividade = f"{atividade} (não realizado)" if minutos == 0 else f"{atividade} (parcial)"
+        acumulado += minutos
+        agenda.append({
+            "hora": h, "rotulo": f"{h:02d}:00", "perfil": perfil_id, "atividade": atividade,
+            "descricao": descricao, "treino_min": minutos, "treino_min_acumulado": acumulado,
+        })
 
     return {
         "id_astronauta": id_ast,
         "dia_missao": dia,
         "ambiente": ambiente,
         "inicio_sono": INICIO_SONO,
-        "horas_sem_sinal": sorted(horas_sem_sinal - set(picos)),
+        "horas_sem_sinal": sorted(horas_sem_sinal),
+        "agenda": agenda,
+        "fc_rep": float(registro["fc_repouso"]),
+        "pas": float(registro["pa_sistolica"]),
+        "pad": float(registro["pa_diastolica"]),
+        "temp": float(registro["temperatura_c"]),
+        # HRV individual simulada: quem tem FC de base mais baixa tende a ter HRV maior
+        "hrv_base": 55 + (70 - base_fc) * 1.2,
+        # Sono curto e humor baixo elevam o estresse e reduzem a HRV ao longo do dia
+        "fator_hrv_dia": max(0.5, 1 - deficit_sono * 0.07 - max(0, 4 - humor) * 0.05),
+        "ajuste_estresse": deficit_sono * 6 + (4 - humor) * 7 + (6 if ambiente == "Transito para Marte" else 0),
+    }
+
+
+def _circadiano(h: int) -> Dict[str, float]:
+    """Ritmo circadiano: temperatura com pico ~17h e vale ~5h; FC acompanha; HRV maior à noite."""
+    c17 = math.cos(2 * math.pi * (h - 17) / 24)
+    c16 = math.cos(2 * math.pi * (h - 16) / 24)
+    c13 = math.cos(2 * math.pi * (h - 13) / 24)
+    return {"temp": 0.2 * c17, "fc": 2.5 * c16, "hrv": 1 - 0.06 * c16, "estresse": 4 * c13}
+
+
+def esperado_hora(plano: Dict[str, Any], h: int) -> Dict[str, float]:
+    """Valor esperado de cada sinal na hora h (sem ruído e sem eventos)."""
+    p = PERFIS[plano["agenda"][h]["perfil"]]
+    c = _circadiano(h)
+    return {
+        "fc_bpm": plano["fc_rep"] + p["fc"] + c["fc"],
+        "pa_sistolica": plano["pas"] + p["pas"],
+        "pa_diastolica": plano["pad"] + p["pad"],
+        "temperatura_c": plano["temp"] + p["temp"] + c["temp"],
+        "spo2_pct": p["spo2"],
+        "hrv_ms": plano["hrv_base"] * plano["fator_hrv_dia"] * p["hrv"] * c["hrv"],
+        "estresse_wearable": min(100.0, p["estresse"] + plano["ajuste_estresse"] + c["estresse"]),
+    }
+
+
+def _alvo_eventos(
+    h: int,
+    desconfortos: List[Dict[str, Any]],
+    contramedidas: List[Dict[str, Any]],
+    desgaste: float,
+) -> tuple:
+    """
+    Efeito fisiológico-alvo dos eventos ativos na hora h sobre a leitura de h+1.
+    Desconforto (dor) ativa o simpático; contramedida recente acalma; fadiga acumulada eleva a FC de repouso.
+    """
+    alvo = {k: 0.0 for k in SINAIS}
+    textos: List[str] = []
+
+    carga_dor = 0.0
+    for d in desconfortos:
+        hd = int(d.get("hora", 0))
+        if hd > h:
+            continue
+        mitigado = any(hd <= int(c.get("hora", 0)) <= h for c in contramedidas)
+        carga_dor += int(d["intensidade"]) * (0.5 if mitigado else 1.0)
+    if carga_dor:
+        alvo["fc_bpm"] += min(12.0, 1.5 * carga_dor)
+        alvo["pa_sistolica"] += min(10.0, 1.2 * carga_dor)
+        alvo["pa_diastolica"] += min(5.0, 0.6 * carga_dor)
+        alvo["estresse_wearable"] += min(25.0, 4 * carga_dor)
+        alvo["hrv_ms"] -= min(0.4, 0.035 * carga_dor)
+        textos.append(f"Dor relatada (carga {carga_dor:g}): FC e estresse sobem, HRV cai")
+
+    recentes = [c for c in contramedidas if 0 <= h - int(c.get("hora", 0)) <= 1]
+    if recentes:
+        n = min(2, len(recentes))
+        alvo["fc_bpm"] -= 3 * n
+        alvo["pa_sistolica"] -= 3 * n
+        alvo["estresse_wearable"] -= 10 * n
+        alvo["hrv_ms"] += 0.08 * n
+        textos.append(f"{len(recentes)} contramedida(s) recente(s): FC e estresse descem, HRV sobe")
+
+    if desgaste > 5:
+        alvo["fc_bpm"] += min(6.0, desgaste * 0.08)
+        alvo["hrv_ms"] -= min(0.2, desgaste * 0.004)
+        alvo["estresse_wearable"] += min(8.0, desgaste * 0.1)
+        textos.append(f"Fadiga acumulada ({desgaste:.0f}): FC de repouso mais alta")
+    return alvo, textos
+
+
+def _montar_ponto(
+    plano: Dict[str, Any],
+    h: int,
+    residuo: Dict[str, float],
+    efeito: Dict[str, float],
+    pico: bool,
+    textos: List[str],
+) -> Dict[str, Any]:
+    a = plano["agenda"][h]
+    esp = esperado_hora(plano, h)
+    valor = {
+        k: esp[k] * (1 + residuo[k] + efeito[k]) if k == "hrv_ms" else esp[k] + residuo[k] + efeito[k]
+        for k in SINAIS
+    }
+    # Oscilação espontânea rara (~3% das horas fora do sono), para a curva não ser "perfeita"
+    rng = random.Random(_semente(plano["id_astronauta"], plano["dia_missao"], h, "osc"))
+    if a["perfil"] != "sono" and rng.random() < 0.03:
+        valor["fc_bpm"] += rng.uniform(18, 26)
+        valor["hrv_ms"] *= 0.6
+
+    tipo_pico = None
+    if pico:
+        antes = dict(valor)
+        tipo_pico = _injetar_pico(valor, plano["ambiente"], a["perfil"], _semente(plano["id_astronauta"], plano["dia_missao"], h, "pico"))
+        # Metade do pico vira resíduo: na hora seguinte o sinal volta aos poucos, sem salto irreal
+        for k in SINAIS:
+            delta = valor[k] - antes[k]
+            residuo[k] += 0.5 * (delta / esp[k] if k == "hrv_ms" and esp[k] else delta)
+
+    sem_sinal = h in plano["horas_sem_sinal"] and tipo_pico is None
+    ponto: Dict[str, Any] = {
+        "hora": h,
+        "rotulo": a["rotulo"],
+        "atividade": a["atividade"],
+        "descricao": a["descricao"],
+        "perfil": a["perfil"],
+        "treino_min": a["treino_min"],
+        "treino_min_acumulado": a["treino_min_acumulado"],
+        "sem_sinal": sem_sinal,
+        "pico_simulado": tipo_pico,
+        "esperado": {k: _arredondar(k, v) for k, v in esp.items()},
+        "efeitos": textos,
+        # Estado interno do gerador (continuidade da próxima leitura)
+        "estado_ar": {
+            "residuo": {k: round(v, 4) for k, v in residuo.items()},
+            "efeito": {k: round(v, 4) for k, v in efeito.items()},
+        },
+    }
+    if sem_sinal:
+        ponto.update({k: None for k in SINAIS})
+        ponto.update({"semaforo_hora": 1, "partes_afetadas": "nenhuma", "alertas": []})
+    else:
+        valor = _limitar(valor)
+        ponto.update({k: _arredondar(k, v) for k, v in valor.items()})
+        ponto.update(_avaliar_hora(ponto, esp, a["perfil"]))
+    return ponto
+
+
+def iniciar_leitura(plano: Dict[str, Any], desgaste: float = 0.0, pico: bool = False) -> Dict[str, Any]:
+    """Primeira leitura do dia (00:00): estado basal, com ruído estacionário e a fadiga residual da véspera."""
+    rng = random.Random(_semente(plano["id_astronauta"], plano["dia_missao"], 0, "ar"))
+    residuo = {k: SIGMA[k] * rng.gauss(0, 1) for k in SINAIS}
+    efeito, textos = _alvo_eventos(0, [], [], desgaste)
+    return _montar_ponto(plano, 0, residuo, efeito, pico, textos)
+
+
+def gerar_proxima_leitura_horaria(estado: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Gera SÓ a leitura da hora h+1 a partir da leitura h (estado["anterior"]).
+    estado: plano (planejar_dia), anterior (ponto h), desconfortos [{hora, intensidade}],
+            contramedidas [{hora}], desgaste_acumulado (prontidão em h), pico (bool).
+    """
+    plano = estado["plano"]
+    anterior = estado["anterior"]
+    h = int(anterior["hora"]) + 1
+    if h > 23:
+        raise ValueError("O dia já tem a leitura das 23:00; vire para o próximo dia.")
+    rng = random.Random(_semente(plano["id_astronauta"], plano["dia_missao"], h, "ar"))
+    ar = anterior.get("estado_ar") or {"residuo": {k: 0.0 for k in SINAIS}, "efeito": {k: 0.0 for k in SINAIS}}
+    inovacao = math.sqrt(1 - RHO_AR ** 2)
+    residuo = {k: RHO_AR * ar["residuo"].get(k, 0.0) + inovacao * SIGMA[k] * rng.gauss(0, 1) for k in SINAIS}
+    alvo, textos = _alvo_eventos(
+        h - 1, estado.get("desconfortos") or [], estado.get("contramedidas") or [], float(estado.get("desgaste_acumulado", 0.0))
+    )
+    efeito = {k: LAG_EFEITO * ar["efeito"].get(k, 0.0) + (1 - LAG_EFEITO) * alvo[k] for k in SINAIS}
+    return _montar_ponto(plano, h, residuo, efeito, bool(estado.get("pico")), textos)
+
+
+def gerar_dia(registro: Dict[str, Any], picos: Optional[List[int]] = None) -> Dict[str, Any]:
+    """
+    Projeção do dia inteiro (24 leituras, sem eventos), feita passo a passo com o gerador incremental.
+    Usada pela análise diária e pelas rotas antigas; o fluxo ao vivo usa iniciar_leitura + gerar_proxima_leitura_horaria.
+    """
+    picos = sorted(set(h for h in (picos or []) if 0 <= h <= 23))
+    plano = planejar_dia(registro)
+    pontos = [iniciar_leitura(plano, pico=0 in picos)]
+    for h in range(1, 24):
+        pontos.append(gerar_proxima_leitura_horaria({"plano": plano, "anterior": pontos[-1], "pico": h in picos}))
+    return {
+        "id_astronauta": plano["id_astronauta"],
+        "dia_missao": plano["dia_missao"],
+        "ambiente": plano["ambiente"],
+        "inicio_sono": INICIO_SONO,
+        "horas_sem_sinal": sorted(set(plano["horas_sem_sinal"]) - set(picos)),
         "picos": picos,
         "pontos": pontos,
         "nota": "Telemetria horária SIMULADA a partir do registro diário; limiares de demonstração (a confirmar).",
     }
+
+
+
+def linha_do_tempo(telemetria: Dict[str, Any], hora: int) -> List[Dict[str, Any]]:
+    """Pontos do início do dia operacional (00:00) até a hora pedida, em ordem cronológica (inclusive)."""
+    hora = max(0, min(23, int(hora)))
+    return sorted((p for p in telemetria["pontos"] if p["hora"] <= hora), key=lambda p: p["hora"])
 
 
 def _injetar_pico(valor: Dict[str, float], ambiente: str, perfil_id: str, semente: int) -> str:
