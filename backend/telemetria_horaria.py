@@ -374,25 +374,121 @@ def gerar_proxima_leitura_horaria(estado: Dict[str, Any]) -> Dict[str, Any]:
 
 def gerar_dia(registro: Dict[str, Any], picos: Optional[List[int]] = None) -> Dict[str, Any]:
     """
-    Projeção do dia inteiro (24 leituras, sem eventos), feita passo a passo com o gerador incremental.
-    Usada pela análise diária e pelas rotas antigas; o fluxo ao vivo usa iniciar_leitura + gerar_proxima_leitura_horaria.
+    SIMULAÇÃO ORIGINAL dos dias registrados na planilha (24 pontos de uma vez, como sempre foi).
+    Os dias NOVOS (criados depois do último dia da tabela) usam o gerador incremental
+    (iniciar_leitura + gerar_proxima_leitura_horaria), uma hora por vez.
+    Gera os 24 pontos horários a partir do registro diário (uma linha da base, como dict).
+    picos: horas em que um pico agudo de wearable deve ser injetado (botão "Simular Pico Wearable").
     """
     picos = sorted(set(h for h in (picos or []) if 0 <= h <= 23))
-    plano = planejar_dia(registro)
-    pontos = [iniciar_leitura(plano, pico=0 in picos)]
-    for h in range(1, 24):
-        pontos.append(gerar_proxima_leitura_horaria({"plano": plano, "anterior": pontos[-1], "pico": h in picos}))
+    id_ast = str(registro["id_astronauta"])
+    dia = int(registro["dia_missao"])
+    ambiente = str(registro["ambiente"])
+    rotina = ROTINAS.get(ambiente, ROTINAS["Estacao Orbital"])
+
+    fc_rep = float(registro["fc_repouso"])
+    pas_dia = float(registro["pa_sistolica"])
+    pad_dia = float(registro["pa_diastolica"])
+    temp_dia = float(registro["temperatura_c"])
+    sono = float(registro["sono_horas"])
+    humor = int(registro["humor"])
+    base_fc = float(registro["base_fc_repouso"])
+    base_sono = float(registro["base_sono"])
+
+    # HRV individual simulada: quem tem FC de base mais baixa tende a ter HRV maior
+    hrv_base = 55 + (70 - base_fc) * 1.2
+    # Sono curto e humor baixo elevam o estresse e reduzem a HRV ao longo do dia
+    deficit_sono = max(0.0, base_sono - sono)
+    ajuste_estresse = deficit_sono * 6 + (4 - humor) * 7 + (6 if ambiente == "Transito para Marte" else 0)
+    fator_hrv_dia = max(0.5, 1 - deficit_sono * 0.07 - max(0, 4 - humor) * 0.05)
+
+    horas_sono = _horas_de_sono(sono)
+    treino_por_hora = _distribuir_treino(ambiente, int(registro["treino_resistido_min"]))
+
+    # Lacuna de telemetria simulada: ~1 a cada 7 dias o wearable fica 2 h sem sinal
+    rng_dia = random.Random(_semente(id_ast, dia, "lacuna"))
+    horas_sem_sinal: set = set()
+    if rng_dia.random() < 1 / 7:
+        inicio = rng_dia.choice([2, 3, 13, 14, 15])
+        horas_sem_sinal = {inicio, inicio + 1}
+
+    pontos: List[Dict[str, Any]] = []
+    acumulado = 0
+    for h in range(24):
+        if h in horas_sono:
+            perfil_id, atividade, descricao = "sono", "Sono", "Janela de sono"
+        else:
+            perfil_id, atividade, descricao = rotina.get(h, ("repouso", "Pausa", "Tempo livre"))
+
+        minutos_treino = treino_por_hora.get(h, 0) if h not in horas_sono else 0
+        if perfil_id in ("resistido", "aerobico"):
+            if minutos_treino < 20:
+                perfil_id = "repouso"
+                atividade = f"{atividade} (não realizado)" if minutos_treino == 0 else f"{atividade} (parcial)"
+        acumulado += minutos_treino
+
+        p = PERFIS[perfil_id]
+        esperado = {
+            "fc_bpm": fc_rep + p["fc"],
+            "pa_sistolica": pas_dia + p["pas"],
+            "pa_diastolica": pad_dia + p["pad"],
+            "temperatura_c": temp_dia + p["temp"],
+            "spo2_pct": p["spo2"],
+            "hrv_ms": hrv_base * fator_hrv_dia * p["hrv"],
+            "estresse_wearable": min(100.0, p["estresse"] + ajuste_estresse),
+        }
+
+        rng = random.Random(_semente(id_ast, dia, h))
+        valor = {
+            "fc_bpm": esperado["fc_bpm"] + rng.gauss(0, 3),
+            "pa_sistolica": esperado["pa_sistolica"] + rng.gauss(0, 4),
+            "pa_diastolica": esperado["pa_diastolica"] + rng.gauss(0, 3),
+            "temperatura_c": esperado["temperatura_c"] + rng.gauss(0, 0.08),
+            "spo2_pct": esperado["spo2_pct"] + rng.gauss(0, 0.6),
+            "hrv_ms": esperado["hrv_ms"] * (1 + rng.gauss(0, 0.08)),
+            "estresse_wearable": esperado["estresse_wearable"] + rng.gauss(0, 6),
+        }
+        # Oscilação espontânea rara (~3% das horas fora do sono), para a curva não ser "perfeita"
+        if h not in horas_sono and rng.random() < 0.03:
+            valor["fc_bpm"] += rng.uniform(18, 26)
+            valor["hrv_ms"] *= 0.6
+
+        pico = None
+        if h in picos:
+            pico = _injetar_pico(valor, ambiente, perfil_id, _semente(id_ast, dia, h, "pico"))
+
+        sem_sinal = h in horas_sem_sinal and pico is None
+        ponto: Dict[str, Any] = {
+            "hora": h,
+            "rotulo": f"{h:02d}:00",
+            "atividade": atividade,
+            "descricao": descricao,
+            "perfil": perfil_id,
+            "treino_min": minutos_treino,
+            "treino_min_acumulado": acumulado,
+            "sem_sinal": sem_sinal,
+            "pico_simulado": pico,
+            "esperado": {k: _arredondar(k, v) for k, v in esperado.items()},
+        }
+        if sem_sinal:
+            ponto.update({k: None for k in valor})
+            ponto.update({"semaforo_hora": 1, "partes_afetadas": "nenhuma", "alertas": []})
+        else:
+            valor = _limitar(valor)
+            ponto.update({k: _arredondar(k, v) for k, v in valor.items()})
+            ponto.update(_avaliar_hora(ponto, esperado, perfil_id))
+        pontos.append(ponto)
+
     return {
-        "id_astronauta": plano["id_astronauta"],
-        "dia_missao": plano["dia_missao"],
-        "ambiente": plano["ambiente"],
+        "id_astronauta": id_ast,
+        "dia_missao": dia,
+        "ambiente": ambiente,
         "inicio_sono": INICIO_SONO,
-        "horas_sem_sinal": sorted(set(plano["horas_sem_sinal"]) - set(picos)),
+        "horas_sem_sinal": sorted(horas_sem_sinal - set(picos)),
         "picos": picos,
         "pontos": pontos,
         "nota": "Telemetria horária SIMULADA a partir do registro diário; limiares de demonstração (a confirmar).",
     }
-
 
 
 def linha_do_tempo(telemetria: Dict[str, Any], hora: int) -> List[Dict[str, Any]]:
